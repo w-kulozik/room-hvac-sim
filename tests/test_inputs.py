@@ -19,16 +19,19 @@ def test_outdoor_temperature_extremes_and_timing():
     assert T.mean() == pytest.approx(26.0, abs=1e-9)
 
 
-def test_outdoor_humidity_has_constant_RH():
+def test_default_outdoor_humidity_ratio_is_constant():
     t = np.linspace(0, DAY, 97)
-    assert psychro.RH_from_W(S.T_o(t), S.W_o(t)) == pytest.approx(0.55, rel=1e-12)
-
-
-def test_constant_W_option():
-    t = np.linspace(0, DAY, 97)
-    W = SummerScenario(constant_W=True).W_o(t)
+    W = S.W_o(t)
     assert np.all(W == W[0])
     assert W[0] == pytest.approx(psychro.W_from_RH(26.0, 0.55))
+    RH = psychro.RH_from_W(S.T_o(t), W)
+    assert RH.max() == pytest.approx(0.55 * psychro.p_ws(26.0) / psychro.p_ws(20.0))
+
+
+def test_constant_RH_option():
+    t = np.linspace(0, DAY, 97)
+    S_rh = SummerScenario(constant_W=False)
+    assert psychro.RH_from_W(S_rh.T_o(t), S_rh.W_o(t)) == pytest.approx(0.55, rel=1e-12)
 
 
 def test_solar_half_sine():

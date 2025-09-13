@@ -42,10 +42,11 @@ class SummerScenario:
     """Sinusoidal summer day repeated indefinitely.
 
     T_o   = T_mean + amp * sin(2*pi*(t/day - phase_h/24)); phase 9 h puts the maximum at 15 h.
-    RH_o  constant, converted to W_o at the instantaneous T_o. Because p_ws is strongly
-          nonlinear, W_o then doubles between 3 h and 15 h (0.008 -> 0.0165 kg/kg). Real
-          air masses keep W roughly constant over a day while RH swings, so
-          ``constant_W=True`` evaluates RH_o at T_mean instead (W_o = 0.0116 kg/kg).
+    W_o   by default RH_o evaluated at T_mean and held constant (W_o = 0.0116 kg/kg), so the
+          outdoor RH swings during the day as it does in a real air mass. With
+          ``constant_W=False`` RH_o is held constant instead and converted at the instantaneous
+          T_o; because p_ws is strongly nonlinear, W_o then doubles between 3 h and 15 h
+          (0.008 -> 0.0165 kg/kg), which overstates the afternoon latent load.
     G_sol half-sine between sunrise and sunset, zero at night.
     n_occ step function, occupied on [occ_start, occ_end).
     """
@@ -54,7 +55,7 @@ class SummerScenario:
     T_amp: float = 6.0
     phase_h: float = 9.0
     RH_o: float = 0.55
-    constant_W: bool = False
+    constant_W: bool = True
     G_max: float = 500.0
     sunrise_h: float = 6.0
     sunset_h: float = 18.0
