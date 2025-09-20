@@ -38,6 +38,16 @@ class RoomParams:
     f_person_conv: float = 0.5               # convective fraction of sensible gain
     g_vap_person_kg_h: float = 0.05          # vapour released per person, kg/h
 
+    # Moisture buffering of interior surfaces, Effective Moisture Penetration Depth (EMPD)
+    # model as in EnergyPlus. Defaults: painted gypsum board on the interior surfaces.
+    moisture_buffer: bool = True
+    buffer_area: float = 60.0                # m2, same surfaces as A_int
+    buffer_density: float = 800.0            # dry density of the layer, kg/m3
+    buffer_depth: float = 0.003              # EMPD for daily cycles, m
+    buffer_slope: float = 0.01               # sorption-isotherm slope du/dphi, kg water/kg material
+    buffer_permeability: float = 2.5e-11     # vapour permeability, kg/(m s Pa) (mu ~ 8)
+    T_ref: float = 25.0                      # reference temperature for the Lewis analogy, degC
+
     # ---- derived quantities -------------------------------------------------------
     @property
     def m_air(self) -> float:
@@ -86,5 +96,33 @@ class RoomParams:
 
     @property
     def tau_moisture(self) -> float:
-        """Moisture time constant 3600/n, s."""
+        """Moisture time constant of the air alone (no buffering), 3600/n, s."""
         return 3600.0 / self.ach
+
+    @property
+    def buffer_capacity(self) -> float:
+        """Water stored in the buffer layer per unit change of its RH, kg."""
+        if not self.moisture_buffer:
+            return 0.0
+        return self.buffer_density * self.buffer_depth * self.buffer_area * self.buffer_slope
+
+    @property
+    def beta_surface(self) -> float:
+        """Surface vapour-transfer coefficient from the Lewis analogy, kg/(m2 s Pa).
+
+        beta = h_i / (rho cp) / (R_v T); with h_i = 3 W/(m2 K) this is about 1.8e-8.
+        """
+        R_v = 461.5
+        return self.h_i / (self.rho_air * self.cp_air) / (R_v * (self.T_ref + 273.15))
+
+    @property
+    def buffer_conductance(self) -> float:
+        """Air <-> buffer vapour conductance, kg/(s Pa).
+
+        Surface resistance in series with diffusion through half the penetration depth.
+        """
+        if not self.moisture_buffer:
+            return 0.0
+        r_surface = 1.0 / self.beta_surface
+        r_material = 0.5 * self.buffer_depth / self.buffer_permeability
+        return self.buffer_area / (r_surface + r_material)

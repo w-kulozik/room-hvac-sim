@@ -1,9 +1,10 @@
-"""Continuous-time room plant: two-node RC thermal model plus a moisture balance.
+"""Continuous-time room plant: two-node RC thermal model plus a two-node moisture balance.
 
-State   x = [T_a, T_m, W]
-    T_a  indoor air temperature, degC
-    T_m  thermal-mass temperature (walls, floor, furniture), degC
-    W    indoor humidity ratio, kg/kg dry air
+State   x = [T_a, T_m, W, phi_b]
+    T_a    indoor air temperature, degC
+    T_m    thermal-mass temperature (walls, floor, furniture), degC
+    W      indoor humidity ratio, kg/kg dry air
+    phi_b  relative humidity in equilibrium with the moisture-buffer layer, fraction
 Control u = [Q_hvac_sens, m_hvac_lat]
     Q_hvac_sens  sensible heat delivered to the air, W (negative when cooling)
     m_hvac_lat   water removed from the air by the unit, kg/s (positive when dehumidifying)
@@ -11,25 +12,31 @@ Control u = [Q_hvac_sens, m_hvac_lat]
 Energy balances
     C_a dT_a/dt = H_am (T_m - T_a) + (H_ao + H_inf)(T_o - T_a) + f_sol,a Q_sol + Q_int,conv + Q_hvac_sens
     C_m dT_m/dt = H_am (T_a - T_m) + H_mo (T_o - T_m) + (1 - f_sol,a) Q_sol + Q_int,rad
-Moisture balance (furnishings are assumed not to buffer moisture)
-    rho V dW/dt = m_inf (W_o - W) + N_occ g_vap - m_hvac_lat
+Moisture balances (EMPD buffer layer on the interior surfaces)
+    rho V dW/dt      = m_inf (W_o - W) + N_occ g_vap - m_hvac_lat + m_buf
+    C_b dphi_b/dt    = -m_buf
+    m_buf            = G_b (phi_b p_ws(T_m) - p_w(W))      [buffer -> air, kg/s]
+The buffer surface sits at the mass temperature, so a warming wall releases moisture.
+The heat of sorption (~2.5 MJ/kg) is neglected; it is of order 10 W for daily cycles.
 
 ``fluxes`` returns every term separately and ``rhs`` is assembled from it, so the energy
-bookkeeping in the verification tests uses exactly the terms that drive the dynamics.
+and water bookkeeping in the verification tests uses exactly the terms that drive the dynamics.
 """
 
 from __future__ import annotations
 
+import math
 from typing import NamedTuple
 
 import numpy as np
 
+from . import psychro
 from .inputs import Disturbances
 from .params import RoomParams
 
 # State and input indices (C_CO2 will be appended to the state on Tuesday)
-IDX_TA, IDX_TM, IDX_W = 0, 1, 2
-N_STATES = 3
+IDX_TA, IDX_TM, IDX_W, IDX_PHI_B = 0, 1, 2, 3
+N_STATES = 4
 IDX_Q_SENS, IDX_M_LAT = 0, 1
 N_INPUTS = 2
 
@@ -37,7 +44,7 @@ U_OFF = np.zeros(N_INPUTS)
 
 
 class Fluxes(NamedTuple):
-    """Heat flows in W and vapour flows in kg/s; sign convention: positive = into the node."""
+    """Heat flows in W and water flows in kg/s; sign convention: positive = into the node."""
 
     # into the air node
     q_mass_to_air: float     # H_am (T_m - T_a); the mass receives the opposite
@@ -54,6 +61,7 @@ class Fluxes(NamedTuple):
     m_infiltration: float    # m_inf (W_o - W)
     m_occupants: float       # N_occ * g_vap
     m_hvac: float            # -m_hvac_lat
+    m_buffer: float          # released by the buffer layer; the buffer loses the same amount
 
     @property
     def air_total(self) -> float:
@@ -72,12 +80,30 @@ class Fluxes(NamedTuple):
 
     @property
     def moisture_total(self) -> float:
+        """Net water flow into the air, kg/s."""
+        return self.m_infiltration + self.m_occupants + self.m_hvac + self.m_buffer
+
+    @property
+    def water_boundary_total(self) -> float:
+        """Net water entering air + buffer together (air-buffer exchange cancels), kg/s."""
         return self.m_infiltration + self.m_occupants + self.m_hvac
 
 
+def _p_ws(T: float) -> float:
+    # scalar fast path of psychro.p_ws, same coefficients
+    return psychro._A * math.exp(psychro._B * T / (T + psychro._C))
+
+
+def buffer_flux(T_m: float, W: float, phi_b: float, p: RoomParams) -> float:
+    """Water released by the buffer layer into the air, kg/s."""
+    if p.buffer_conductance == 0.0:
+        return 0.0
+    return p.buffer_conductance * (phi_b * _p_ws(T_m) - W * psychro.P_ATM / (psychro.EPS + W))
+
+
 def fluxes(t: float, x: np.ndarray, u: np.ndarray, d: Disturbances, p: RoomParams) -> Fluxes:
-    """All heat and vapour flows at state x, control u and disturbances d."""
-    T_a, T_m, W = x[IDX_TA], x[IDX_TM], x[IDX_W]
+    """All heat and water flows at state x, control u and disturbances d."""
+    T_a, T_m, W, phi_b = x[IDX_TA], x[IDX_TM], x[IDX_W], x[IDX_PHI_B]
     q_sol = p.g_win * p.A_win * d.G_sol
     q_occ = d.n_occ * p.q_person_sens
     return Fluxes(
@@ -93,6 +119,7 @@ def fluxes(t: float, x: np.ndarray, u: np.ndarray, d: Disturbances, p: RoomParam
         m_infiltration=p.m_dot_inf * (d.W_o - W),
         m_occupants=d.n_occ * p.g_vap_person,
         m_hvac=-u[IDX_M_LAT],
+        m_buffer=buffer_flux(T_m, W, phi_b, p),
     )
 
 
@@ -103,10 +130,23 @@ def rhs(t: float, x: np.ndarray, u: np.ndarray, d: Disturbances, p: RoomParams) 
     dx[IDX_TA] = f.air_total / p.C_a
     dx[IDX_TM] = f.mass_total / p.C_m
     dx[IDX_W] = f.moisture_total / p.m_air
+    dx[IDX_PHI_B] = -f.m_buffer / p.buffer_capacity if p.buffer_capacity > 0 else 0.0
     return dx
+
+
+def equilibrium_state(T_a: float, T_m: float, W: float) -> np.ndarray:
+    """State with the buffer layer in equilibrium with the air (no buffer flux)."""
+    phi_b = float(psychro.pw_from_W(W) / psychro.p_ws(T_m))
+    return np.array([T_a, T_m, W, phi_b])
 
 
 def stored_energy(x: np.ndarray, p: RoomParams) -> np.ndarray:
     """Sensible energy stored relative to 0 degC, J. Works on a single state or on rows of states."""
     x = np.asarray(x)
     return p.C_a * x[..., IDX_TA] + p.C_m * x[..., IDX_TM]
+
+
+def stored_water(x: np.ndarray, p: RoomParams) -> np.ndarray:
+    """Water held in the room air plus the buffer layer, kg (buffer relative to phi_b = 0)."""
+    x = np.asarray(x)
+    return p.m_air * x[..., IDX_W] + p.buffer_capacity * x[..., IDX_PHI_B]
