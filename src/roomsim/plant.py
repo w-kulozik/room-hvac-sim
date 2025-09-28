@@ -123,15 +123,37 @@ def fluxes(t: float, x: np.ndarray, u: np.ndarray, d: Disturbances, p: RoomParam
     )
 
 
-def rhs(t: float, x: np.ndarray, u: np.ndarray, d: Disturbances, p: RoomParams) -> np.ndarray:
-    """dx/dt of the room plant."""
-    f = fluxes(t, x, u, d, p)
+def derivatives(f: Fluxes, p: RoomParams) -> np.ndarray:
+    """dx/dt from an already evaluated set of fluxes."""
     dx = np.empty(N_STATES)
     dx[IDX_TA] = f.air_total / p.C_a
     dx[IDX_TM] = f.mass_total / p.C_m
     dx[IDX_W] = f.moisture_total / p.m_air
     dx[IDX_PHI_B] = -f.m_buffer / p.buffer_capacity if p.buffer_capacity > 0 else 0.0
     return dx
+
+
+def rhs(t: float, x: np.ndarray, u: np.ndarray, d: Disturbances, p: RoomParams) -> np.ndarray:
+    """dx/dt of the room plant."""
+    return derivatives(fluxes(t, x, u, d, p), p)
+
+
+def jacobian(t: float, x: np.ndarray, u: np.ndarray, d: Disturbances, p: RoomParams) -> np.ndarray:
+    """Jacobian d(rhs)/dx by central differences (used for stability limits and, later, MPC)."""
+    x = np.asarray(x, dtype=float)
+    scale = np.array([1e-3, 1e-3, 1e-6, 1e-4])   # K, K, kg/kg, -
+    J = np.empty((N_STATES, N_STATES))
+    for j in range(N_STATES):
+        e = np.zeros(N_STATES)
+        e[j] = scale[j]
+        J[:, j] = (rhs(t, x + e, u, d, p) - rhs(t, x - e, u, d, p)) / (2 * scale[j])
+    return J
+
+
+def measure(x: np.ndarray, p: RoomParams) -> np.ndarray:
+    """Sensor outputs available to a controller: [T_a, RH_a]. T_m and phi_b are not measured."""
+    T_a, W = x[IDX_TA], x[IDX_W]
+    return np.array([T_a, float(psychro.RH_from_W(T_a, W))])
 
 
 def equilibrium_state(T_a: float, T_m: float, W: float) -> np.ndarray:

@@ -20,6 +20,11 @@ from . import psychro
 DAY = 86_400.0
 HOUR = 3_600.0
 
+# Disturbances that are piecewise constant (they jump on grid points). The simulator samples
+# them once per step at the step start instead of at every Runge-Kutta stage; otherwise the
+# last RK4 stage of the step ending at 8:00 would already see the 8:00 value.
+PIECEWISE_CONSTANT = ("n_occ",)
+
 
 class Disturbances(NamedTuple):
     T_o: np.ndarray | float      # outdoor dry-bulb temperature, degC
