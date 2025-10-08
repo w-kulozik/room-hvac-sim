@@ -99,7 +99,10 @@ warm-up days (discarded) until the daily cycle is periodic.
 **Time scales:** τ_air ≈ 1 700 s; τ_mass ≈ 3.1 days; air moisture alone 3 600/n = 7 200 s;
 air–buffer exchange ≈ 900 s; apparent moisture time constant with buffering ≈ 15 000 s.
 The system is stiff. RK4 with 60 s is accurate; explicit Euler is stable for steps below
-2/|λ_max|, checked numerically from the Jacobian.
+2/|λ_max|, checked numerically from the Jacobian. **[rev]** The fastest mode is the air–buffer
+moisture exchange, not the air temperature, and it stiffens with temperature because the
+buffer flux scales with p_ws(T_m): the Euler limit is ≈ 790 s at 26 °C and ≈ 380 s at 48 °C
+(RK4: ≈ 1 100 s and ≈ 530 s).
 
 ## 5. Verification
 
