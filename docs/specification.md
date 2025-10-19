@@ -97,9 +97,9 @@ simulated period, so the result depends on the initial state. The reported run i
 warm-up days (discarded) until the daily cycle is periodic.
 
 **Time scales:** τ_air ≈ 1 700 s; τ_mass ≈ 3.1 days; air moisture alone 3 600/n = 7 200 s;
-air–buffer exchange ≈ 900 s; apparent moisture time constant with buffering ≈ 15 000 s.
+air-buffer exchange ≈ 900 s; apparent moisture time constant with buffering ≈ 15 000 s.
 The system is stiff. RK4 with 60 s is accurate; explicit Euler is stable for steps below
-2/|λ_max|, checked numerically from the Jacobian. **[rev]** The fastest mode is the air–buffer
+2/|λ_max|, checked numerically from the Jacobian. **[rev]** The fastest mode is the air-buffer
 moisture exchange, not the air temperature, and it stiffens with temperature because the
 buffer flux scales with p_ws(T_m): the Euler limit is ≈ 790 s at 26 °C and ≈ 380 s at 48 °C
 (RK4: ≈ 1 100 s and ≈ 530 s).
@@ -111,7 +111,7 @@ buffer flux scales with p_ws(T_m): the Euler limit is ≈ 790 s at 26 °C and �
 3. **One-node limit:** a step in outdoor temperature against the analytical exponential. Convergence order ≈ 4 with RK4 and ≈ 1 with Euler.
 4. **Energy-balance closure [rev]:** residual C_a·ΔT_a + C_m·ΔT_m − ∫Σ boundary fluxes dt, checked two ways:
    - (a) integrating the fluxes as extra states with the same integrator: closes to round-off
-     (every Runge–Kutta method preserves linear invariants), which verifies signs and bookkeeping;
+     (every Runge-Kutta method preserves linear invariants), which verifies signs and bookkeeping;
    - (b) integrating the logged fluxes with composite Simpson: the residual falls as O(Δt) with
      Euler and O(Δt⁴) with RK4, which verifies the order.
    The same two checks apply to the water balance of air + buffer.

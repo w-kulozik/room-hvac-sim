@@ -1,6 +1,6 @@
 """Fixed-step explicit integrators for dx/dt = f(t, x).
 
-Fixed steps are deliberate: discrete controllers update on a regular grid, and the
+Fixed steps because the discrete controllers update on a regular grid and the
 verification tests measure the order of convergence as the step is halved.
 """
 

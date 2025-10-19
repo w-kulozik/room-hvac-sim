@@ -29,11 +29,11 @@ C_b dφ_b/dt  = −ṁ_buf,      ṁ_buf = G_b (φ_b p_ws(T_m) − p_w(W))
 | H_ao, H_mo, H_inf | window, opaque envelope, infiltration (0.5 ach) | 4, 25, 9.05 W/K |
 | C_b, G_b | moisture buffer (EMPD, painted gypsum) | 1.44 kg, 5.2·10⁻⁷ kg/(s·Pa) |
 
-Room 5 × 4 × 2.7 m, two occupants 8–18 h (70 W, 0.05 kg/h each), 3 m² window (g = 0.6),
-sinusoidal summer day 20–32 °C. Full specification, including where and why it departs from
+Room 5 × 4 × 2.7 m, two occupants 8-18 h (70 W, 0.05 kg/h each), 3 m² window (g = 0.6),
+sinusoidal summer day 20-32 °C. Full specification, including where and why it departs from
 its first version: [docs/specification.md](docs/specification.md).
 
-Time scales: air ≈ 1 700 s, mass ≈ 3.1 days, air–buffer moisture exchange ≈ 900 s,
+Time scales: air ≈ 1 700 s, mass ≈ 3.1 days, air-buffer moisture exchange ≈ 900 s,
 apparent room moisture ≈ 15 000 s (twice the 7 200 s of the air alone).
 
 ## Day-1 result: free-floating summer baseline
@@ -48,7 +48,7 @@ underestimates the peak by almost 4 K on day 3:
 | uniform 26 °C (naive) | 29.65 °C | 31.55 °C | 32.95 °C |
 
 **Baseline for the controllers: T_a,max = 36.8 °C at 15:07**, T_a min 33.4 °C, mean mass
-temperature 35.1 °C, indoor RH 35–39 %. With 0.5 ach, an unshaded window and about 340 W of
+temperature 35.1 °C, indoor RH 35-39 %. With 0.5 ach, an unshaded window and about 340 W of
 mean gains, the room sits ~9 K above the mean outdoor temperature.
 
 ![Humidity](figures/humidity.png)
@@ -74,7 +74,7 @@ All checks run in `pytest` (54 tests, ~16 s).
 
 ![Convergence](figures/convergence.png)
 
-Two levels of energy-balance check are used on purpose. Any Runge–Kutta method preserves
+The energy balance is checked at two levels. Any Runge-Kutta method preserves
 linear invariants, so integrating the boundary flows alongside the state closes the balance to
 round-off whatever the step: that verifies signs and bookkeeping. Integrating the logged flows
 with an independent quadrature (Simpson) gives a residual that falls with the order of the
@@ -82,7 +82,7 @@ method: that verifies accuracy.
 
 ![Energy balance](figures/energy_balance.png)
 
-**Stiffness.** The fastest mode is the air–buffer moisture exchange, and it stiffens with
+**Stiffness.** The fastest mode is the air-buffer moisture exchange, and it stiffens with
 temperature because the buffer flux scales with p_ws(T_m). The explicit-Euler stability limit is
 ≈ 790 s at 26 °C and ≈ 380 s at 48 °C; RK4 at 60 s has ample margin.
 
