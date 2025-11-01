@@ -29,7 +29,7 @@ def test_warmer_outside_heats_both_nodes():
 def test_cooling_and_dehumidification_signs():
     d = ConstantInputs(T_o=26.0, W_o=0.011)(0.0)
     x = equilibrium_state(26.0, 26.0, 0.011)
-    dx = rhs(0.0, x, np.array([-1000.0, 1e-4]), d, P)
+    dx = rhs(0.0, x, np.array([-1000.0, 1e-4, 0.0]), d, P)
     assert dx[IDX_TA] == pytest.approx(-1000.0 / P.C_a)
     assert dx[IDX_TM] == 0.0
     assert dx[IDX_W] == pytest.approx(-1e-4 / P.m_air)
@@ -37,7 +37,7 @@ def test_cooling_and_dehumidification_signs():
 
 def test_air_mass_exchange_cancels_in_boundary_total():
     S = SummerScenario()
-    x = np.array([27.0, 25.0, 0.012, 0.5])
+    x = np.array([27.0, 25.0, 0.012, 0.5, 800.0])
     f = fluxes(0.0, x, U_OFF, S(13 * 3600.0), P)
     assert f.air_total + f.mass_total == pytest.approx(f.boundary_total, rel=1e-14)
 
@@ -61,8 +61,8 @@ def test_buffer_parameters_are_plausible():
 
 def test_water_exchange_air_buffer_is_conservative():
     d = ConstantInputs(T_o=30.0, W_o=0.014, n_occ=2)(0.0)
-    x = np.array([25.0, 24.0, 0.009, 0.7])
-    u = np.array([0.0, 2e-5])
+    x = np.array([25.0, 24.0, 0.009, 0.7, 600.0])
+    u = np.array([0.0, 2e-5, 0.01])
     f = fluxes(0.0, x, u, d, P)
     dx = rhs(0.0, x, u, d, P)
     d_water = P.m_air * dx[IDX_W] + P.buffer_capacity * dx[IDX_PHI_B]
@@ -81,5 +81,5 @@ def test_dry_buffer_absorbs_and_warm_wall_releases():
 def test_buffer_can_be_disabled():
     p = replace(P, moisture_buffer=False)
     d = ConstantInputs(T_o=26.0, W_o=0.011)(0.0)
-    dx = rhs(0.0, np.array([26.0, 26.0, 0.011, 0.2]), U_OFF, d, p)
+    dx = rhs(0.0, np.array([26.0, 26.0, 0.011, 0.2, 420.0]), U_OFF, d, p)
     assert dx[IDX_W] == 0.0 and dx[IDX_PHI_B] == 0.0

@@ -5,7 +5,7 @@ Per step [t_k, t_k + dt):
   2. sample the piecewise-constant disturbances at t_k;
   3. advance the plant with Euler or RK4; continuous disturbances are evaluated at the stage times.
 
-Cumulative boundary heat and water are integrated as two extra states with the same method,
+Cumulative boundary heat, water and CO2 are integrated as three extra states with the same method,
 so the balance closure in ``SimResult`` reflects exactly what the integrator did.
 """
 
@@ -18,14 +18,17 @@ import numpy as np
 from .inputs import PIECEWISE_CONSTANT, Disturbances, Scenario
 from .integrators import STEPPERS
 from .params import RoomParams
-from .plant import N_INPUTS, N_STATES, Fluxes, derivatives, fluxes, measure
+from .plant import N_INPUTS, N_STATES, STATE_SCALE, Fluxes, derivatives, fluxes, measure
 from .results import SimResult
 
 
 class Controller(Protocol):
     def step(self, t: float, y: np.ndarray) -> np.ndarray:
-        """Return u = [Q_hvac_sens, m_hvac_lat] from the measurement y = [T_a, RH_a]."""
+        """Return u = [Q_hvac_sens, m_hvac_lat, V_vent] from the measurement y = [T_a, RH_a, C]."""
         ...
+
+
+N_AUX = 3   # cumulative boundary heat (J), water (kg), CO2 (m3)
 
 
 def _ratio(a: float, b: float, what: str) -> int:
@@ -50,11 +53,11 @@ def simulate(
     n_steps = _ratio(t_end - t_start, dt, "t_end - t_start")
     n_ctrl = _ratio(dt_ctrl, dt, "dt_ctrl") if controller is not None else 1
 
-    x = np.concatenate([np.asarray(x0, dtype=float), [0.0, 0.0]])   # + E_in, M_in
+    x = np.concatenate([np.asarray(x0, dtype=float), np.zeros(N_AUX)])   # + E_in, M_in, CO2_in
     u = np.zeros(N_INPUTS)
 
     t_log = t_start + dt * np.arange(n_steps + 1)
-    x_log = np.empty((n_steps + 1, N_STATES + 2))
+    x_log = np.empty((n_steps + 1, N_STATES + N_AUX))
     u_log = np.empty((n_steps + 1, N_INPUTS))
     d_log = np.empty((n_steps + 1, len(Disturbances._fields)))
     q_log = np.empty((n_steps + 1, len(Fluxes._fields)))
@@ -76,7 +79,8 @@ def simulate(
         def f(tt: float, xx: np.ndarray) -> np.ndarray:
             d = scenario(tt)._replace(**held)
             fl = fluxes(tt, xx[:N_STATES], u, d, p)
-            return np.concatenate([derivatives(fl, p), [fl.boundary_total, fl.water_boundary_total]])
+            return np.concatenate([derivatives(fl, p),
+                                   [fl.boundary_total, fl.water_boundary_total, fl.co2_total]])
 
         log(k, t, x, d_k)
         x = step(f, t, x, dt)
@@ -91,6 +95,7 @@ def simulate(
         q={name: q_log[:, i] for i, name in enumerate(Fluxes._fields)},
         E_in=x_log[:, N_STATES],
         M_in=x_log[:, N_STATES + 1],
+        CO2_in=x_log[:, N_STATES + 2],
         p=p,
         method=method,
         dt=dt,
@@ -116,7 +121,7 @@ def periodic_state(
     converges in one or two iterations; the Jacobian of Phi_T is built by finite differences.
     ``controller_factory`` returns a fresh controller per run, so controller state is reset.
     """
-    scale = np.array([1e-3, 1e-3, 1e-6, 1e-4])   # finite-difference steps: K, K, kg/kg, -
+    scale = STATE_SCALE                           # finite-difference steps
     tol = 1e-3 * scale                            # periodicity error accepted after one period
     x = np.asarray(x_guess, dtype=float).copy()
 

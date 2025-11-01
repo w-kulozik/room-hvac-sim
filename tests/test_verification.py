@@ -8,7 +8,7 @@ from scipy.integrate import solve_ivp
 
 from roomsim.inputs import DAY, HOUR, ConstantInputs, SummerScenario
 from roomsim.params import RoomParams
-from roomsim.plant import IDX_PHI_B, IDX_TA, IDX_TM, IDX_W, U_OFF, equilibrium_state, rhs
+from roomsim.plant import IDX_CO2, IDX_PHI_B, IDX_TA, IDX_TM, IDX_W, U_OFF, equilibrium_state, rhs
 from roomsim.simulate import periodic_state, simulate
 from roomsim import verification as v
 
@@ -31,6 +31,7 @@ def test_steady_state_is_a_fixed_point(d):
     assert np.abs(dx[[IDX_TA, IDX_TM]]).max() < 1e-12      # K/s
     assert np.abs(dx[IDX_W]) < 1e-15                       # 1/s
     assert np.abs(dx[IDX_PHI_B]) < 1e-12
+    assert np.abs(dx[IDX_CO2]) < 1e-10                     # ppm/s
 
 
 @pytest.mark.parametrize("d", STEADY_CASES)
@@ -44,6 +45,7 @@ def test_simulation_converges_to_steady_state(d):
     assert r.x[-1, [IDX_TA, IDX_TM]] == pytest.approx(x_ss[[IDX_TA, IDX_TM]], abs=1e-6)
     assert r.x[-1, IDX_W] == pytest.approx(x_ss[IDX_W], abs=1e-10)
     assert r.x[-1, IDX_PHI_B] == pytest.approx(x_ss[IDX_PHI_B], abs=1e-7)
+    assert r.x[-1, IDX_CO2] == pytest.approx(x_ss[IDX_CO2], abs=1e-6)
 
 
 # ---- 5.3 one-node limit and convergence order ----------------------------------------------
@@ -138,7 +140,8 @@ def test_matches_scipy_radau_on_full_scenario():
     for a, b in zip(breaks[:-1], breaks[1:]):
         held = S(a).n_occ
         sol = solve_ivp(lambda t, y: rhs(t, y, U_OFF, S(t)._replace(n_occ=held), P),
-                        (a, b), x, method="Radau", rtol=1e-11, atol=[1e-9, 1e-9, 1e-13, 1e-11])
+                        (a, b), x, method="Radau", rtol=1e-11, atol=[1e-9, 1e-9, 1e-13, 1e-11, 1e-7])
         x = sol.y[:, -1]
     assert r.x[-1, [IDX_TA, IDX_TM]] == pytest.approx(x[[IDX_TA, IDX_TM]], abs=1e-6)
     assert r.x[-1, IDX_W] == pytest.approx(x[IDX_W], abs=1e-10)
+    assert r.x[-1, IDX_CO2] == pytest.approx(x[IDX_CO2], abs=1e-6)

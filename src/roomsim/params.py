@@ -37,6 +37,7 @@ class RoomParams:
     q_person_sens: float = 70.0              # sensible gain per person, W
     f_person_conv: float = 0.5               # convective fraction of sensible gain
     g_vap_person_kg_h: float = 0.05          # vapour released per person, kg/h
+    co2_person_l_s: float = 0.0052           # CO2 per person, L/s (1.2 met, ASHRAE 62.1 basis)
 
     # Moisture buffering of interior surfaces, Effective Moisture Penetration Depth (EMPD)
     # model as in EnergyPlus. Defaults: painted gypsum board on the interior surfaces.
@@ -73,6 +74,16 @@ class RoomParams:
     def m_dot_inf(self) -> float:
         """Infiltration mass flow of dry air, kg/s."""
         return self.m_air * self.ach / 3600.0
+
+    @property
+    def V_dot_inf(self) -> float:
+        """Infiltration volume flow, m3/s."""
+        return self.volume * self.ach / 3600.0
+
+    @property
+    def co2_person(self) -> float:
+        """CO2 released per person, m3/s."""
+        return self.co2_person_l_s * 1e-3
 
     @property
     def g_vap_person(self) -> float:

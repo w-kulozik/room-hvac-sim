@@ -31,6 +31,7 @@ class Disturbances(NamedTuple):
     W_o: np.ndarray | float      # outdoor humidity ratio, kg/kg
     G_sol: np.ndarray | float    # solar irradiance on the window, W/m2
     n_occ: np.ndarray | float    # number of occupants, -
+    C_o: np.ndarray | float      # outdoor CO2 concentration, ppm
 
 
 class Scenario(Protocol):
@@ -67,6 +68,7 @@ class SummerScenario:
     n_people: float = 2.0
     occ_start_h: float = 8.0
     occ_end_h: float = 18.0
+    C_o: float = 420.0
 
     def T_o(self, t):
         t = np.asarray(t, dtype=float)
@@ -90,7 +92,8 @@ class SummerScenario:
         return np.where(occupied, self.n_people, 0.0)
 
     def __call__(self, t) -> Disturbances:
-        return Disturbances(self.T_o(t), self.W_o(t), self.G_sol(t), self.n_occ(t))
+        ones = np.ones_like(np.asarray(t, dtype=float))
+        return Disturbances(self.T_o(t), self.W_o(t), self.G_sol(t), self.n_occ(t), self.C_o * ones)
 
 
 @dataclass(frozen=True)
@@ -105,7 +108,9 @@ class ConstantInputs:
     W_o: float = 0.010
     G_sol: float = 0.0
     n_occ: float = 0.0
+    C_o: float = 420.0
 
     def __call__(self, t) -> Disturbances:
         ones = np.ones_like(np.asarray(t, dtype=float))
-        return Disturbances(self.T_o * ones, self.W_o * ones, self.G_sol * ones, self.n_occ * ones)
+        return Disturbances(self.T_o * ones, self.W_o * ones, self.G_sol * ones,
+                            self.n_occ * ones, self.C_o * ones)

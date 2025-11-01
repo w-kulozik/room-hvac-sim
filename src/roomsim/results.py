@@ -9,7 +9,8 @@ import numpy as np
 from . import psychro
 from .inputs import Disturbances
 from .params import RoomParams
-from .plant import IDX_PHI_B, IDX_TA, IDX_TM, IDX_W, Fluxes, stored_energy, stored_water
+from .plant import (IDX_CO2, IDX_PHI_B, IDX_TA, IDX_TM, IDX_W, Fluxes, stored_co2,
+                    stored_energy, stored_water)
 
 
 @dataclass
@@ -18,7 +19,7 @@ class SimResult:
 
     u[k], d[k] and the fluxes at row k are the values in force on [t_k, t_k+1)
     (zero-order hold for the control, step-start sample for piecewise-constant inputs).
-    E_in and M_in are the cumulative boundary heat (J) and water (kg) since t_0,
+    E_in, M_in and CO2_in are the cumulative boundary heat (J), water (kg) and CO2 (m3) since t_0,
     integrated alongside the state with the same method.
     """
 
@@ -29,6 +30,7 @@ class SimResult:
     q: dict[str, np.ndarray]
     E_in: np.ndarray
     M_in: np.ndarray
+    CO2_in: np.ndarray
     p: RoomParams
     method: str
     dt: float
@@ -49,6 +51,10 @@ class SimResult:
     @property
     def phi_b(self) -> np.ndarray:
         return self.x[:, IDX_PHI_B]
+
+    @property
+    def CO2(self) -> np.ndarray:
+        return self.x[:, IDX_CO2]
 
     @property
     def RH(self) -> np.ndarray:
@@ -83,6 +89,11 @@ class SimResult:
     def water_residual(self) -> np.ndarray:
         return self.water_stored - self.M_in
 
+    @property
+    def co2_residual(self) -> np.ndarray:
+        C = stored_co2(self.x, self.p)
+        return (C - C[0]) - self.CO2_in
+
     def boundary_heat_flow(self) -> np.ndarray:
         """Net heat into the room at each grid point, W."""
         return sum(self.q[name] for name in BOUNDARY_HEAT_FIELDS)
@@ -97,11 +108,12 @@ class SimResult:
             d=Disturbances(*(np.asarray(f)[m] for f in self.d)),
             q={k: v[m] for k, v in self.q.items()},
             E_in=self.E_in[m] - self.E_in[m][0], M_in=self.M_in[m] - self.M_in[m][0],
+            CO2_in=self.CO2_in[m] - self.CO2_in[m][0],
             p=self.p, method=self.method, dt=self.dt,
         )
 
 
-BOUNDARY_HEAT_FIELDS = ("q_window", "q_infiltration", "q_solar_air", "q_internal_conv",
-                        "q_hvac", "q_envelope", "q_solar_mass", "q_internal_rad")
-BOUNDARY_WATER_FIELDS = ("m_infiltration", "m_occupants", "m_hvac")
+BOUNDARY_HEAT_FIELDS = ("q_window", "q_infiltration", "q_ventilation", "q_solar_air",
+                        "q_internal_conv", "q_hvac", "q_envelope", "q_solar_mass", "q_internal_rad")
+BOUNDARY_WATER_FIELDS = ("m_infiltration", "m_ventilation", "m_occupants", "m_hvac")
 assert set(BOUNDARY_HEAT_FIELDS) | set(BOUNDARY_WATER_FIELDS) < set(Fluxes._fields)

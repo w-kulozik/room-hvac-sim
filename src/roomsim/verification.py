@@ -20,7 +20,7 @@ from .simulate import simulate
 # ---- steady state ------------------------------------------------------------------------
 
 def steady_state(p: RoomParams, d: ConstantInputs) -> np.ndarray:
-    """Analytical steady state [T_a, T_m, W, phi_b] under constant inputs and u = 0."""
+    """Analytical steady state [T_a, T_m, W, phi_b, C] under constant inputs and u = 0."""
     q_sol = p.g_win * p.A_win * d.G_sol
     q_occ = p.q_person_sens * d.n_occ
     A = np.array([[-(p.H_am + p.H_ao + p.H_inf), p.H_am],
@@ -29,7 +29,8 @@ def steady_state(p: RoomParams, d: ConstantInputs) -> np.ndarray:
                    p.H_mo * d.T_o + (1 - p.f_sol_air) * q_sol + (1 - p.f_person_conv) * q_occ])
     T_a, T_m = np.linalg.solve(A, b)
     W = d.W_o + d.n_occ * p.g_vap_person / p.m_dot_inf
-    return equilibrium_state(T_a, T_m, W)
+    C = d.C_o + d.n_occ * p.co2_person / p.V_dot_inf * 1e6
+    return equilibrium_state(T_a, T_m, W, C)
 
 
 # ---- one-node limit ----------------------------------------------------------------------

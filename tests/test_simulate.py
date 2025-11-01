@@ -50,7 +50,7 @@ class RecordingController:
 
     def step(self, t, y):
         self.calls.append((t, y.copy()))
-        return np.array([-100.0 * len(self.calls), 0.0])
+        return np.array([-100.0 * len(self.calls), 0.0, 0.0])
 
 
 def test_controller_sampled_and_held():
@@ -62,8 +62,8 @@ def test_controller_sampled_and_held():
     q = r.u[:-1, IDX_Q_SENS].reshape(5, 6)
     assert np.all(q == q[:, :1])
     assert np.allclose(q[:, 0], [-100, -200, -300, -400, -500])
-    # the controller sees only T_a and RH
-    assert ctrl.calls[0][1].shape == (2,)
+    # the controller sees only T_a, RH and CO2
+    assert ctrl.calls[0][1].shape == (3,)
 
 
 def test_controller_period_must_be_multiple_of_step():

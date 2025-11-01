@@ -16,31 +16,32 @@ first version was physically inconsistent. Each revision is marked **[rev]** wit
 | `controllers/` | from Wednesday: **discrete** controllers executed every Δt_c, output held (zero-order hold) |
 | `tests/` | verification of section 5 |
 
-**State** x = [T_a, T_m, W, φ_b] **[rev]**
+**State** x = [T_a, T_m, W, φ_b, C] **[rev]**
 - T_a: indoor air temperature, °C
 - T_m: thermal-mass temperature (walls, furniture), °C
 - W: indoor humidity ratio, kg water / kg dry air
 - φ_b: relative humidity in equilibrium with the moisture-buffer layer of the interior surfaces, fraction
-- C_CO2 is appended on Tuesday.
+- C: indoor CO2 concentration, ppm
 
-**Control input** u = [Q_hvac_sens, ṁ_hvac_lat]
+**Control input** u = [Q_hvac_sens, ṁ_hvac_lat, V_vent]
 - Q_hvac_sens: sensible heat delivered by the unit, W (negative when cooling)
 - ṁ_hvac_lat: water removed by the unit, kg/s
+- V_vent: mechanical outdoor-air supply, m³/s (balanced, no heat recovery)
 - Zero on day 1.
 
 ## 1. Thermal balance: two-node RC model
 
 Air:
-C_a·dT_a/dt = H_am·(T_m − T_a) + (H_ao + H_inf)·(T_o − T_a) + f_sol,a·Q_sol + Q_int,conv + Q_hvac_sens
+C_a·dT_a/dt = H_am·(T_m − T_a) + (H_ao + H_inf + H_vent)·(T_o − T_a) + f_sol,a·Q_sol + Q_int,conv + Q_hvac_sens
 
 Mass:
 C_m·dT_m/dt = H_am·(T_a − T_m) + H_mo·(T_o − T_m) + (1 − f_sol,a)·Q_sol + Q_int,rad
 
-with H_inf = ρ·c_p·V·n/3600, H_am = 1/R_am = h_i·A_int and Q_sol = g·A_win·G_sol.
+with H_inf = ρ·c_p·V·n/3600, H_vent = ρ·c_p·V_vent, H_am = 1/R_am = h_i·A_int and Q_sol = g·A_win·G_sol.
 
 ## 2. Moisture balance **[rev]**
 
-ρ·V·dW/dt = ρ·V·n/3600·(W_o − W) + N_pers·g_vap − ṁ_hvac_lat + ṁ_buf
+ρ·V·dW/dt = ρ·(V·n/3600 + V_vent)·(W_o − W) + N_pers·g_vap − ṁ_hvac_lat + ṁ_buf
 C_b·dφ_b/dt = −ṁ_buf
 ṁ_buf = G_b·(φ_b·p_ws(T_m) − p_w(W))
 
@@ -56,6 +57,14 @@ model used by EnergyPlus:
 - The layer is at the mass temperature T_m, so a warming wall releases moisture.
 - The heat of sorption is neglected (order 10 W for daily cycles).
 - Can be switched off with `RoomParams(moisture_buffer=False)`, which recovers the original model.
+
+## 2b. CO2 balance
+
+V·dC/dt = (V·n/3600 + V_vent)·(C_o − C) + N_pers·G_CO2·10⁶
+
+with C in ppm, C_o = 420 ppm and G_CO2 = 0.0052 L/s per person (sedentary office, 1.2 met).
+With infiltration alone the occupied steady state is 1 807 ppm, so the room needs mechanical
+ventilation; V_vent is the actuator for ventilation-level strategies.
 
 ## 3. Psychrometrics (p = 101 325 Pa)
 
