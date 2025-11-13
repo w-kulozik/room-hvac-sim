@@ -66,6 +66,31 @@ with C in ppm, C_o = 420 ppm and G_CO2 = 0.0052 L/s per person (sedentary office
 With infiltration alone the occupied steady state is 1 807 ppm, so the room needs mechanical
 ventilation; V_vent is the actuator for ventilation-level strategies.
 
+## 2c. Air-conditioning unit (inverter split, cooling)
+
+Commands from the controller: compressor speed s (0 = off, otherwise [0.3, 1]), indoor fan f
+([0.4, 1]) and ventilation V_vent. The unit turns them into the plant inputs
+Q_hvac_sens = −Q_sens + P_fan,in and ṁ_hvac_lat at every Runge-Kutta stage, using the return-air
+state of that stage.
+
+| Item | Model |
+|---|---|
+| Coil | bypass factor BF = exp(−NTU), NTU ∝ ṁ^−0.4; BF = 0.15 at 450 m³/h |
+| Dry / wet | dry if the coil surface is above the inlet dew point (closed form); wet: Newton on h_sat(T_s); continuous at the switch |
+| Split | Q_sens = ṁ(c_pa + c_pv W_out)(T_in − T_out), Q_lat = ṁ_lat(h_fg0 + c_pv T_in): their sum equals ṁ Δh exactly |
+| Outlet | brought to saturation at constant enthalpy if the mixing line would cross it |
+| Capacity | 2.5 kW at 35 °C outdoor, −1 %/K above |
+| Frost protection | capacity capped so that the evaporating temperature stays ≥ 0.5 °C |
+| Cycle | COP = η(s) T_evap/(T_cond − T_evap), T_evap = T_s − Q/UA_evap, T_cond = T_o + Q_cond/UA_cond, closed form; η calibrated to EER 3.5 (fans included) at 35 °C / 27 °C / W = 0.0114 |
+| Start-up | delivered capacity × (1 − e^(−t_on/120 s)); compressor power that of the full capacity |
+
+At rating conditions: SHR 0.73, coil surface 13 °C, supply 15 °C. Lower fan speed gives a colder
+coil, more dehumidification and a lower COP; part load raises the EER (3.5 → 4.0 at 30 %).
+
+**Coupling accuracy.** With the unit evaluated at the stage states the closed loop keeps
+fourth order (measured 3.9). Evaluating the unit once per sample and holding Q_sens gives first
+order (1.1): at Δt = 60 s the error is 2·10⁻⁴ K instead of 1·10⁻¹⁰ K.
+
 ## 3. Psychrometrics (p = 101 325 Pa)
 
 - Saturation pressure (Magnus, T in °C): p_ws = 610.94·exp(17.625·T/(T + 243.04)) Pa

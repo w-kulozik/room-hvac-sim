@@ -34,6 +34,9 @@ class SimResult:
     p: RoomParams
     method: str
     dt: float
+    E_el: np.ndarray | None = None              # cumulative electrical energy of the unit, J
+    cmd: np.ndarray | None = None               # held commands [s, f, V_vent] (with a unit)
+    unit: dict[str, np.ndarray] | None = None   # unit operating point at each grid point
 
     # ---- states and psychrometrics ----------------------------------------------------
     @property
@@ -110,6 +113,9 @@ class SimResult:
             E_in=self.E_in[m] - self.E_in[m][0], M_in=self.M_in[m] - self.M_in[m][0],
             CO2_in=self.CO2_in[m] - self.CO2_in[m][0],
             p=self.p, method=self.method, dt=self.dt,
+            E_el=None if self.E_el is None else self.E_el[m] - self.E_el[m][0],
+            cmd=None if self.cmd is None else self.cmd[m],
+            unit=None if self.unit is None else {k: v[m] for k, v in self.unit.items()},
         )
 
 
