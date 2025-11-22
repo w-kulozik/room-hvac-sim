@@ -2,7 +2,8 @@
 
 Commands
     s    compressor speed fraction; 0 = off, otherwise clipped to [s_min, 1]
-    f    indoor fan speed fraction, clipped to [f_min, 1]
+    f    indoor fan speed fraction; 0 = off, otherwise clipped to [f_min, 1]
+         (f > 0 with s = 0 is fan-only operation)
 
 Coil (bypass-factor / apparatus-dew-point model, equivalent to an effectiveness-NTU coil
 with Lewis number 1 and a uniform surface temperature T_s):
@@ -33,6 +34,19 @@ eta is calibrated so that the unit meets its rated EER (fans included) at rating
 Frost protection: the controller of a real unit slows the compressor when the evaporating
 temperature would fall below T_evap_min. Here the requested capacity is capped at the value
 that gives T_evap = T_evap_min (bisection; only active at low fan speed and high load).
+
+Water held on the coil (Henderson & Rengarajan, 1996). State M_c, kg, capacity M_max:
+    compressor on   condensate first wets the coil and drains only once the coil is full:
+                    dM_c/dt = m_cond (1 - g),  drain = m_cond g,  g = 0 below 0.95 M_max -> 1 at M_max
+    fan only        the film re-evaporates into the air stream at constant air enthalpy:
+                    W_out = W_in + (1 - BF)(W_sat(T_wb) - W_in) e(M_c),  dM_c/dt = -m_evap
+                    with e(M_c) = 1 above 0.05 M_max, falling linearly to 0 when the coil is dry
+    both off        no change (natural drying is neglected)
+The smooth ramps of g and e keep the right-hand side continuous for the integrator. The
+enthalpy of the liquid film (cp_w T_wb ~ 80 kJ/kg vs h_fg ~ 2500 kJ/kg) is neglected in the
+fan-only branch, so the supply air there has exactly the return-air enthalpy.
+Re-evaporation after the compressor stops with the fan running is the main cause of the
+part-load latent degradation of cycling units.
 
 Start-up: after each start the delivered capacity ramps as 1 - exp(-t_on / tau_start) while
 the compressor already draws the power of the requested capacity.
@@ -119,6 +133,8 @@ class ACParams:
     P_fan_out: float = 40.0          # outdoor fan while the compressor runs, W
     T_evap_min: float = 0.5          # frost protection limit on evaporating temperature, degC
     tau_start: float = 120.0         # capacity ramp after a start, s
+    M_coil_max: float = 0.25         # water the coil holds before it drains, kg
+    film_ramp: float = 0.05          # width of the full/dry ramps, fraction of M_coil_max
     rho_air: float = 1.2
 
     @property
@@ -131,8 +147,8 @@ class ACParams:
 
 
 class CoilState(NamedTuple):
-    Q_sens: float      # sensible heat removed from the air stream, W (>= 0)
-    m_lat: float       # water condensed, kg/s (>= 0)
+    Q_sens: float      # sensible heat removed from the air stream, W
+    m_lat: float       # water removed from the air, kg/s (negative when the film re-evaporates)
     Q_coil: float      # heat taken by the refrigerant, W
     P_el: float        # electrical power, W
     P_fan_in: float    # indoor fan power, W (ends up as heat in the room)
@@ -141,6 +157,8 @@ class CoilState(NamedTuple):
     T_out: float       # supply air, degC
     W_out: float       # supply air, kg/kg
     wet: bool
+    dM_coil: float = 0.0   # rate of change of the water held on the coil, kg/s
+    m_drain: float = 0.0   # condensate leaving through the drain, kg/s
 
 
 OFF_STATE = CoilState(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, math.nan, math.nan, math.nan, False)
@@ -236,16 +254,43 @@ class ACUnit:
         Q_coil = Q_sens + Q_lat - m_lat * CP_W * T_s
         return Q_sens, m_lat, Q_coil, T_s, T_out, W_out, wet
 
+    def _drain_fraction(self, M_c: float) -> float:
+        w = self.p.film_ramp * self.p.M_coil_max
+        return min(max((M_c - (self.p.M_coil_max - w)) / w, 0.0), 1.0)
+
+    def _evaporation_fraction(self, M_c: float) -> float:
+        w = self.p.film_ramp * self.p.M_coil_max
+        return min(max(M_c / w, 0.0), 1.0)
+
+    def fan_only(self, f: float, T_in: float, W_in: float, M_c: float) -> CoilState:
+        """Fan running with the compressor off: the water film re-evaporates adiabatically."""
+        p = self.p
+        f = min(max(f, p.f_min), 1.0)
+        m = p.m_nom * f
+        P_fan_in = p.P_fan_in_nom * f ** 3
+        h_in = _h(T_in, W_in)
+        T_wb = T_from_h_sat(h_in, T_guess=T_in - 5.0)
+        W_out = W_in + (1.0 - self.bypass_factor(f)) * (_W_sat(T_wb) - W_in) \
+            * self._evaporation_fraction(M_c)
+        T_out = (h_in - H_FG0 * W_out) / (CP_A + CP_V * W_out)
+        m_lat = m * (W_in - W_out)                       # <= 0: water added to the air
+        Q_sens = m * (CP_A + CP_V * W_out) * (T_in - T_out)
+        return CoilState(Q_sens, m_lat, 0.0, P_fan_in, P_fan_in, 0.0, T_wb, T_out, W_out,
+                         M_c > 0.0, dM_coil=m_lat, m_drain=0.0)
+
     def operate(self, s: float, f: float, T_in: float, W_in: float, T_o: float,
-                ramp: float = 1.0) -> CoilState:
+                ramp: float = 1.0, M_c: float | None = None) -> CoilState:
         """Operating point for commands (s, f) with return air (T_in, W_in) and outdoor T_o.
 
         ``ramp`` in [0, 1] scales the delivered capacity after a start; the compressor already
-        draws the power of the requested capacity.
+        draws the power of the requested capacity. ``M_c`` is the water held on the coil; when
+        it is None the coil is treated as permanently full (steady wet-coil operation).
         """
-        if s <= 0.0:
-            return OFF_STATE
         p = self.p
+        if s <= 0.0:
+            if f <= 0.0:
+                return OFF_STATE
+            return self.fan_only(f, T_in, W_in, 0.0 if M_c is None else M_c)
         s = min(max(s, p.s_min), 1.0)
         f = min(max(f, p.f_min), 1.0)
         Q_req = self.frost_limited(self.capacity(s, T_o), f, T_in, W_in)
@@ -256,7 +301,9 @@ class ACUnit:
         cop = self._cop(self.eta_full * self.eta_rel(s), Q_coil_req, T_s_req, T_o)
         P_fan_in = p.P_fan_in_nom * f ** 3
         P_el = Q_coil_req / cop + P_fan_in + p.P_fan_out
-        return CoilState(Q_sens, m_lat, Q_coil, P_el, P_fan_in, cop, T_s, T_out, W_out, wet)
+        g = 1.0 if M_c is None else self._drain_fraction(M_c)
+        return CoilState(Q_sens, m_lat, Q_coil, P_el, P_fan_in, cop, T_s, T_out, W_out, wet,
+                         dM_coil=m_lat * (1.0 - g), m_drain=m_lat * g)
 
     def start_ramp(self, t_on: float) -> float:
         """Capacity fraction t_on seconds after a compressor start."""

@@ -136,7 +136,9 @@ def test_inverter_part_load_is_more_efficient():
 
 
 def test_commands_are_clipped():
-    assert U.operate(0.0, 1.0, 27.0, 0.0114, 35.0) is OFF_STATE
+    assert U.operate(0.0, 0.0, 27.0, 0.0114, 35.0) is OFF_STATE
+    fan = U.operate(0.0, 1.0, 27.0, 0.0114, 35.0)              # fan only, dry coil
+    assert fan.P_el == pytest.approx(U.p.P_fan_in_nom) and fan.m_lat == 0.0
     assert U.operate(0.1, 1.0, 27.0, 0.0114, 35.0) == U.operate(R.s_min, 1.0, 27.0, 0.0114, 35.0)
     assert U.operate(1.5, 1.0, 27.0, 0.0114, 35.0) == U.operate(1.0, 1.0, 27.0, 0.0114, 35.0)
     assert U.operate(1.0, 0.1, 27.0, 0.0114, 35.0) == U.operate(1.0, R.f_min, 27.0, 0.0114, 35.0)

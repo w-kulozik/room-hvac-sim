@@ -12,6 +12,7 @@ ventilation) and the unit converts it into u at every Runge-Kutta stage, using t
 state of that stage. Holding Q_sens itself over the sampling interval instead would make the
 closed loop only first-order accurate, because the coil output depends on the air state.
 
+With a unit, the water held on its coil, M_c, is integrated as an additional state.
 Cumulative boundary heat, water and CO2, and the electrical energy of the unit, are integrated
 as extra states with the same method, so the balances in ``SimResult`` reflect exactly what the
 integrator did.
@@ -46,8 +47,10 @@ class Controller(Protocol):
         ...
 
 
-N_AUX = 4   # cumulative boundary heat (J), water (kg), CO2 (m3), electrical energy (J)
-UNIT_LOG = ("Q_sens", "m_lat", "Q_coil", "P_el", "COP", "T_s", "T_out")
+# Cumulative integrals: boundary heat (J), room water (kg), CO2 (m3), electrical energy (J),
+# water entering from outside (kg) and condensate drained (kg)
+N_AUX = 6
+UNIT_LOG = ("Q_sens", "m_lat", "Q_coil", "P_el", "COP", "T_s", "T_out", "m_drain")
 
 
 def _ratio(a: float, b: float, what: str) -> int:
@@ -58,9 +61,9 @@ def _ratio(a: float, b: float, what: str) -> int:
 
 
 def unit_input(unit: ACUnit, cmd: np.ndarray, ramp: float, x: np.ndarray,
-               d: Disturbances) -> tuple[np.ndarray, CoilState]:
+               d: Disturbances, M_c: float | None = None) -> tuple[np.ndarray, CoilState]:
     """Plant input u produced by the unit for command cmd at air state x."""
-    st = unit.operate(cmd[IDX_CMD_S], cmd[IDX_CMD_FAN], x[IDX_TA], x[IDX_W], d.T_o, ramp)
+    st = unit.operate(cmd[IDX_CMD_S], cmd[IDX_CMD_FAN], x[IDX_TA], x[IDX_W], d.T_o, ramp, M_c)
     u = np.empty(N_INPUTS)
     u[IDX_Q_SENS] = -st.Q_sens + st.P_fan_in      # indoor fan heat stays in the room
     u[IDX_M_LAT] = st.m_lat
@@ -80,18 +83,21 @@ def simulate(
     dt_ctrl: float = 60.0,
     unit: ACUnit | None = None,
     unit_running_at_start: bool = False,
+    M_coil0: float = 0.0,
 ) -> SimResult:
     step = STEPPERS[method]
     n_steps = _ratio(t_end - t_start, dt, "t_end - t_start")
     n_ctrl = _ratio(dt_ctrl, dt, "dt_ctrl") if controller is not None else 1
 
-    x = np.concatenate([np.asarray(x0, dtype=float), np.zeros(N_AUX)])
+    n_u = 1 if unit is not None else 0          # unit states: water on the coil
+    i_aux = N_STATES + n_u
+    x = np.concatenate([np.asarray(x0, dtype=float), [M_coil0] * n_u, np.zeros(N_AUX)])
     out = np.zeros(N_CMD if unit is not None else N_INPUTS)    # held controller output
     running = unit_running_at_start
     t_started = -np.inf if running else t_start
 
     t_log = t_start + dt * np.arange(n_steps + 1)
-    x_log = np.empty((n_steps + 1, N_STATES + N_AUX))
+    x_log = np.empty((n_steps + 1, i_aux + N_AUX))
     u_log = np.empty((n_steps + 1, N_INPUTS))
     c_log = np.zeros((n_steps + 1, N_CMD)) if unit is not None else None
     d_log = np.empty((n_steps + 1, len(Disturbances._fields)))
@@ -102,10 +108,10 @@ def simulate(
         if unit is None:
             return out, OFF_STATE
         ramp = unit.start_ramp(tt - t_started) if out[IDX_CMD_S] > 0 else 1.0
-        return unit_input(unit, out, ramp, xx, d)
+        return unit_input(unit, out, ramp, xx, d, M_c=xx[N_STATES])
 
     def log(k: int, t: float, x: np.ndarray, d: Disturbances) -> None:
-        u, st = plant_input(t, x[:N_STATES], d)
+        u, st = plant_input(t, x, d)
         x_log[k] = x
         u_log[k] = u
         d_log[k] = [float(v) for v in d]
@@ -129,10 +135,11 @@ def simulate(
 
         def f(tt: float, xx: np.ndarray) -> np.ndarray:
             d = scenario(tt)._replace(**held)
-            u, st = plant_input(tt, xx[:N_STATES], d)
+            u, st = plant_input(tt, xx, d)
             fl = fluxes(tt, xx[:N_STATES], u, d, p)
-            return np.concatenate([derivatives(fl, p), [fl.boundary_total,
-                                   fl.water_boundary_total, fl.co2_total, st.P_el]])
+            return np.concatenate([derivatives(fl, p), [st.dM_coil] * n_u, [fl.boundary_total,
+                                   fl.water_boundary_total, fl.co2_total, st.P_el,
+                                   fl.water_external, st.m_drain]])
 
         log(k, t, x, d_k)
         x = step(f, t, x, dt)
@@ -145,10 +152,13 @@ def simulate(
         u=u_log,
         d=Disturbances(*d_log.T),
         q={name: q_log[:, i] for i, name in enumerate(Fluxes._fields)},
-        E_in=x_log[:, N_STATES],
-        M_in=x_log[:, N_STATES + 1],
-        CO2_in=x_log[:, N_STATES + 2],
-        E_el=x_log[:, N_STATES + 3],
+        E_in=x_log[:, i_aux],
+        M_in=x_log[:, i_aux + 1],
+        CO2_in=x_log[:, i_aux + 2],
+        E_el=x_log[:, i_aux + 3],
+        W_ext=x_log[:, i_aux + 4],
+        M_drain=x_log[:, i_aux + 5],
+        M_coil=x_log[:, N_STATES] if unit is not None else None,
         cmd=c_log,
         unit={name: unit_log[:, i] for i, name in enumerate(UNIT_LOG)} if unit is not None else None,
         p=p,

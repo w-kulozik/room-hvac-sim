@@ -107,6 +107,11 @@ class Fluxes(NamedTuple):
         return self.m_infiltration + self.m_ventilation + self.m_occupants + self.m_hvac
 
     @property
+    def water_external(self) -> float:
+        """Water entering from outside the room + unit system (outdoor air, occupants), kg/s."""
+        return self.m_infiltration + self.m_ventilation + self.m_occupants
+
+    @property
     def co2_total(self) -> float:
         """Net CO2 entering the room, m3/s."""
         return self.c_outdoor_air + self.c_occupants

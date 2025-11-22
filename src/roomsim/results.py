@@ -37,6 +37,9 @@ class SimResult:
     E_el: np.ndarray | None = None              # cumulative electrical energy of the unit, J
     cmd: np.ndarray | None = None               # held commands [s, f, V_vent] (with a unit)
     unit: dict[str, np.ndarray] | None = None   # unit operating point at each grid point
+    M_coil: np.ndarray | None = None            # water held on the coil, kg
+    W_ext: np.ndarray | None = None             # cumulative water from outdoor air and occupants, kg
+    M_drain: np.ndarray | None = None           # cumulative condensate drained, kg
 
     # ---- states and psychrometrics ----------------------------------------------------
     @property
@@ -97,6 +100,13 @@ class SimResult:
         C = stored_co2(self.x, self.p)
         return (C - C[0]) - self.CO2_in
 
+    @property
+    def system_water_residual(self) -> np.ndarray:
+        """Water balance of room air + buffer + coil film: storage change - (in - drained), kg."""
+        M_c = np.zeros_like(self.t) if self.M_coil is None else self.M_coil - self.M_coil[0]
+        drained = np.zeros_like(self.t) if self.M_drain is None else self.M_drain
+        return self.water_stored + M_c - (self.W_ext - drained)
+
     def boundary_heat_flow(self) -> np.ndarray:
         """Net heat into the room at each grid point, W."""
         return sum(self.q[name] for name in BOUNDARY_HEAT_FIELDS)
@@ -116,6 +126,9 @@ class SimResult:
             E_el=None if self.E_el is None else self.E_el[m] - self.E_el[m][0],
             cmd=None if self.cmd is None else self.cmd[m],
             unit=None if self.unit is None else {k: v[m] for k, v in self.unit.items()},
+            M_coil=None if self.M_coil is None else self.M_coil[m],
+            W_ext=None if self.W_ext is None else self.W_ext[m] - self.W_ext[m][0],
+            M_drain=None if self.M_drain is None else self.M_drain[m] - self.M_drain[m][0],
         )
 
 
