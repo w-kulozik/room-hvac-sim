@@ -132,7 +132,7 @@ class ACParams:
     P_fan_in_nom: float = 25.0       # indoor fan at full speed, W (cubic in speed)
     P_fan_out: float = 40.0          # outdoor fan while the compressor runs, W
     T_evap_min: float = 0.5          # frost protection limit on evaporating temperature, degC
-    tau_start: float = 120.0         # capacity ramp after a start, s
+    tau_start: float = 60.0          # capacity ramp after a start, s (40-90 s measured on small units)
     M_coil_max: float = 0.25         # water the coil holds before it drains, kg
     film_ramp: float = 0.05          # width of the full/dry ramps, fraction of M_coil_max
     rho_air: float = 1.2

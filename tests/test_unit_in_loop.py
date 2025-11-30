@@ -65,7 +65,8 @@ def test_start_up_ramp_after_a_start():
     k = 3
     full = UNIT.operate(1.0, 1.0, r.T_a[k], r.W[k], HOT.T_o)
     assert r.unit["P_el"][k] == pytest.approx(full.P_el, rel=1e-12)
-    assert r.unit["Q_coil"][k] < 0.25 * full.Q_coil
+    ramp = 1.0 - np.exp(-k * r.dt / UNIT.p.tau_start)
+    assert r.unit["Q_coil"][k] < (ramp + 0.05) * full.Q_coil
 
 
 # ---- accuracy of the coupling ---------------------------------------------------------

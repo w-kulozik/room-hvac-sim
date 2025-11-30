@@ -82,7 +82,7 @@ state of that stage.
 | Capacity | 2.5 kW at 35 °C outdoor, −1 %/K above |
 | Frost protection | capacity capped so that the evaporating temperature stays ≥ 0.5 °C |
 | Cycle | COP = η(s) T_evap/(T_cond − T_evap), T_evap = T_s − Q/UA_evap, T_cond = T_o + Q_cond/UA_cond, closed form; η calibrated to EER 3.5 (fans included) at 35 °C / 27 °C / W = 0.0114 |
-| Start-up | delivered capacity × (1 − e^(−t_on/120 s)); compressor power that of the full capacity |
+| Start-up | delivered capacity × (1 − e^(−t_on/60 s)) (40-90 s measured on small units); compressor power that of the full capacity |
 
 At rating conditions: SHR 0.73, coil surface 13 °C, supply 15 °C. Lower fan speed gives a colder
 coil, more dehumidification and a lower COP; part load raises the EER (3.5 → 4.0 at 30 %).
