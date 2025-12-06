@@ -13,7 +13,7 @@ first version was physically inconsistent. Each revision is marked **[rev]** wit
 | `plant.py` | `rhs(t, x, u, d, p)` returning dx/dt (continuous plant) and `fluxes(...)` with every term |
 | `integrators.py` | fixed-step explicit Euler and classical RK4 |
 | `simulate.py` | fixed-step loop coordinating plant, controller and logging |
-| `controllers/` | from Wednesday: **discrete** controllers executed every Δt_c, output held (zero-order hold) |
+| `controllers/` | **discrete** controllers executed every Δt_c, output held (zero-order hold) |
 | `tests/` | verification of section 5 |
 
 **State** x = [T_a, T_m, W, φ_b, C] **[rev]**
@@ -159,4 +159,4 @@ buffer flux scales with p_ws(T_m): the Euler limit is ≈ 790 s at 26 °C and �
 - 3-day simulation without air conditioning.
 - Figures: temperatures (T_a, T_m, T_o); relative humidity with dew point; energy-balance closure.
 - All tests passing.
-- Maximum room temperature recorded: baseline for Tuesday.
+- Maximum room temperature recorded: free-floating baseline for the controllers.

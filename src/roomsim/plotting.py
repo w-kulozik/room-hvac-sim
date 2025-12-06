@@ -155,3 +155,66 @@ def plot_convergence(studies: dict, path) -> None:
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
+
+
+# ---- controller comparison ----------------------------------------------------------------
+
+YELLOW, MAGENTA = "#eda100", "#e87ba4"
+SERIES = (BLUE, ORANGE, AQUA, YELLOW, MAGENTA)    # fixed order: colour follows the controller
+
+
+def plot_controller_day(results: dict, T_set: float, path, band: float = 1.0) -> None:
+    """One day per controller: air temperature (top) and compressor speed (bottom)."""
+    n = len(results)
+    fig = plt.figure(figsize=(9, 2.25 * n + 0.4))
+    subfigs = fig.subfigures(n, 1, hspace=0.02)
+    for i, (sf, (name, r), color) in enumerate(zip(subfigs, results.items(), SERIES)):
+        axT, axS = sf.subplots(2, 1, sharex=True, gridspec_kw=dict(height_ratios=[3, 1], hspace=0.12))
+        th = (r.t - r.t[0]) / HOUR
+        for ax in (axT, axS):
+            _shade_occupancy(ax, r, th, label=False)
+            ax.set_axisbelow(True)
+        axT.axhspan(T_set - band, T_set + band, color=GRID, alpha=0.5, lw=0, zorder=0)
+        axT.axhline(T_set, color=MUTED, lw=0.8, ls=(0, (3, 3)))
+        axT.plot(th, r.T_a, color=color, lw=1.4)
+        axT.set_ylim(T_set - band - 0.2, T_set + band + 0.2)
+        axT.set_ylabel("$T_a$ (°C)")
+        axT.set_title(name, loc="left", fontsize=10, pad=4)
+        axS.step(th, r.cmd[:, 0], where="post", color=color, lw=1.1)
+        axS.set_ylim(-0.05, 1.08)
+        axS.set_yticks([0, 0.3, 1])
+        axS.set_ylabel("s (-)")
+        axS.set_xlim(0, 24)
+        axS.set_xticks(np.arange(0, 25, 3))
+        axS.set_xticklabels([f"{h:02d}:00" for h in range(0, 25, 3)] if i == n - 1 else [])
+    fig.suptitle("Air temperature and compressor speed over one day "
+                 "(grey: occupied; band: set point ± 1 K)",
+                 x=0.06, y=1.0, ha="left", va="bottom", fontsize=11, fontweight="semibold")
+    fig.savefig(path)
+    plt.close(fig)
+
+
+def plot_controller_metrics(metrics: dict, path) -> None:
+    """Small multiples of the main indicators, one bar per controller."""
+    panels = [("energy_kWh", "Electrical energy (kWh)"), ("starts", "Compressor starts"),
+              ("T_rms_occ", "RMS deviation, occupied (K)"),
+              ("h_RH60_occ", "Hours above 60 % RH, occupied")]
+    names = list(metrics)
+    fig, axes = plt.subplots(1, len(panels), figsize=(11, 3.0), sharey=True)
+    y = np.arange(len(names))[::-1]
+    for ax, (key, title) in zip(axes, panels):
+        ax.set_axisbelow(True)
+        vals = [getattr(metrics[n], key) for n in names]
+        ax.barh(y, vals, color=SERIES[:len(names)], height=0.62, edgecolor="#fcfcfb", linewidth=2)
+        vmax = max(vals) if max(vals) > 0 else 1.0
+        for yi, v in zip(y, vals):
+            ax.text(v + 0.02 * vmax, yi, f"{v:.3g}" if isinstance(v, float) else str(v),
+                    va="center", fontsize=8.5, color=INK_2)
+        ax.set_xlim(0, vmax * 1.25)
+        ax.set_title(title, fontsize=9.5)
+        ax.grid(axis="y", visible=False)
+    axes[0].set_yticks(y)
+    axes[0].set_yticklabels(names)
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)

@@ -1,7 +1,7 @@
 """Day-1 deliverable: three summer days without air conditioning.
 
 Produces figures/temperatures.png, figures/humidity.png, figures/energy_balance.png and
-figures/convergence.png, and prints the baseline indicators used on Tuesday.
+figures/convergence.png, and prints the free-floating baseline indicators.
 
     python scripts/run_baseline.py
 """
@@ -48,7 +48,7 @@ def main() -> None:
     daily_table(r, "Periodic steady state (reported baseline)")
     daily_table(r_cold, "Naive start at 26 °C (not periodic, for comparison)")
     k = int(np.argmax(r.T_a))
-    print(f"\nBaseline for Tuesday: T_a,max = {r.T_a[k]:.2f} °C at {(r.t[k] % DAY) / HOUR:.2f} h")
+    print(f"\nFree-floating baseline: T_a,max = {r.T_a[k]:.2f} °C at {(r.t[k] % DAY) / HOUR:.2f} h")
     print(f"Energy residual max: {np.abs(r.energy_residual).max():.2e} J;"
           f" water residual max: {np.abs(r.water_residual).max():.2e} kg")
 
