@@ -191,6 +191,7 @@ def measure(x: np.ndarray, p: RoomParams) -> np.ndarray:
 
 
 IDX_Y_TA, IDX_Y_RH, IDX_Y_CO2 = 0, 1, 2
+IDX_Y_TCOIL = 3     # appended by the simulator when an air-conditioning unit is present
 
 
 def equilibrium_state(T_a: float, T_m: float, W: float, C: float = 420.0) -> np.ndarray:

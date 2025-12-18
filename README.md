@@ -92,8 +92,7 @@ is common in practice, so the PI keeps it at minimum speed most of the time. At 
 fan the coil surface sits near 19 °C, above the dew point of the room air (about 16 °C): the coil
 runs dry and removes no water at all (sensible heat ratio 1.00 against 0.80 for on/off). The
 mean EER rises from 2.6 to 4.5, but indoor RH climbs to 64 %. Recovering dehumidification at part
-load (lower fan speed, humidity priority, cascade control) is the problem that the next
-strategies address.
+load is the subject of the next section.
 
 **Leaving the fan on between cycles returns the condensate to the room.** With the on/off
 thermostat, continuous fan raises the mean RH from 49 % to 64 %: the water held on the coil
@@ -106,9 +105,39 @@ a continuous demand and a separate handler turns it into feasible commands, with
 stop times of 3 min. Handler A (thermostatic hysteresis, integrator frozen) is what many units
 do; handler C (sigma-delta) meets the mean demand exactly, so the PI keeps integrating.
 
+### Humidity-aware fan control
+
+The indoor fan is the dehumidification actuator: less airflow means a colder coil and a lower
+sensible heat ratio. At minimum compressor speed, going from full to 40 % fan takes the coil from
+19 °C (dry) to 15 °C (wet), SHR 1.00 to 0.76, for a 5 % loss of EER. The compressor stays under the
+same PI temperature loop; two structures drive the fan:
+
+- **H1**: a relative-humidity PI acting directly on the fan speed.
+- **H2, cascade**: the RH loop sets a coil-temperature target, and an inner loop on the
+  evaporator thermistor moves the fan to reach it.
+
+Set points 25 °C and 55 % RH:
+
+| Controller | Energy (kWh) | Water removed (kg) | RH mean occ. (%) | RH std occ. (%) | h RH > 60 % occ. |
+|---|---|---|---|---|---|
+| PI (C), full fan | 6.12 | 0.0 | 63.7 | 2.15 | 27.2 |
+| H1 fan RH-PI | 7.20 | 5.3 | 55.3 | 0.82 | 0.0 |
+| H2 cascade | 7.20 | 5.3 | 55.2 | 0.50 | 0.0 |
+| On/off (reference) | 11.38 | 8.6 | 49.2 | 1.54 | 0.0 |
+
+![Humidity control](figures/humidity_control.png)
+
+Both bring the humidity back to its set point for 18 % more energy than the plain PI, still 37 %
+less than on/off. The two structures have the same mean performance; the cascade holds humidity
+more steadily and moves the fan about half as much. Keeping the controllers tuned for the nominal
+unit and running them on a different one (dirty coil with bypass factor 0.30, or a 3.5 kW unit)
+gives the same ordering: RH standard deviation 0.50-0.76 % for the cascade against 0.82-0.98 %
+for H1. The advantage is real but small, as expected when the outer process (room humidity) is
+much slower than anything the inner loop rejects.
+
 ## Verification
 
-All checks run in `pytest` (114 tests, ~50 s).
+All checks run in `pytest` (125 tests, about a minute).
 
 | Check | Result |
 |---|---|
@@ -127,6 +156,7 @@ All checks run in `pytest` (114 tests, ~50 s).
 | Unit inside the integrator, closed-loop convergence order | **3.9** |
 | PI anti-windup: integrator under saturation vs analytical value | 10⁻⁹ |
 | Sigma-delta: mean delivered demand, cycle length vs design formula | ±0.01, ±10 % |
+| Cascade inner loop on the real coil: coil temperature vs its set point | ±0.05 K |
 
 ![Convergence](figures/convergence.png)
 
@@ -164,9 +194,11 @@ src/roomsim/
   metrics.py       energy, starts, comfort, humidity and CO2 indicators
   verification.py  analytical solutions and convergence studies (shared by tests and figures)
   plotting.py      figures
-  controllers/     on/off thermostat, discrete PI with anti-windup, low-load handlers
+  controllers/     on/off thermostat, discrete PI with anti-windup, low-load handlers,
+                   humidity-aware fan control (direct and cascade)
 scripts/run_baseline.py         free-floating baseline and verification figures
 scripts/compare_controllers.py  controller comparison table and figures
+scripts/compare_humidity.py     humidity-aware fan control and robustness to the unit
 tests/
 docs/specification.md
 ```
@@ -178,12 +210,11 @@ pip install -e .[dev]
 pytest -v
 python scripts/run_baseline.py
 python scripts/compare_controllers.py
+python scripts/compare_humidity.py
 ```
 
 ## Roadmap
 
-1. Humidity-aware control of the inverter unit: fan-speed reduction and cascade
-   temperature/humidity control.
-2. Linear MPC with a Kalman filter estimating the unmeasured mass temperature, tested under
+1. Linear MPC with a Kalman filter estimating the unmeasured mass temperature, tested under
    ±20 % model mismatch.
-3. Ventilation-level strategies driven by CO2.
+2. Ventilation-level strategies driven by CO2.

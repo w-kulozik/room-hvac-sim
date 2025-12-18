@@ -39,7 +39,7 @@ N_CMD = 3
 
 class Controller(Protocol):
     def step(self, t: float, y: np.ndarray) -> np.ndarray:
-        """Output from the measurement y = [T_a, RH_a, C].
+        """Output from the measurement y = [T_a, RH_a, C], plus the coil temperature with a unit.
 
         Without a unit: u = [Q_hvac_sens, m_hvac_lat, V_vent].
         With a unit:    command = [s, f, V_vent].
@@ -58,6 +58,11 @@ def _ratio(a: float, b: float, what: str) -> int:
     if n < 1 or abs(n * b - a) > 1e-9 * max(abs(a), 1.0):
         raise ValueError(f"{what} must be a positive integer multiple of the step")
     return n
+
+
+def coil_sensor(st: CoilState, T_a: float) -> float:
+    """Evaporator thermistor: coil surface while the unit runs, room air when it is idle."""
+    return st.T_s if (st.Q_coil > 0.0 or st.P_fan_in > 0.0) and st.T_s == st.T_s else T_a
 
 
 def unit_input(unit: ACUnit, cmd: np.ndarray, ramp: float, x: np.ndarray,
@@ -122,15 +127,18 @@ def simulate(
 
     for k in range(n_steps):
         t = t_log[k]
+        d_k = scenario(t)
         if controller is not None and k % n_ctrl == 0:
-            out = np.asarray(controller.step(t, measure(x[:N_STATES], p)), dtype=float)
+            y = measure(x[:N_STATES], p)
+            if unit is not None:
+                y = np.append(y, coil_sensor(plant_input(t, x, d_k)[1], x[IDX_TA]))
+            out = np.asarray(controller.step(t, y), dtype=float)
             if unit is not None:
                 now_on = out[IDX_CMD_S] > 0
                 if now_on and not running:
                     t_started = t
                 running = now_on
 
-        d_k = scenario(t)
         held = {name: getattr(d_k, name) for name in PIECEWISE_CONSTANT}
 
         def f(tt: float, xx: np.ndarray) -> np.ndarray:

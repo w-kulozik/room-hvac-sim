@@ -218,3 +218,35 @@ def plot_controller_metrics(metrics: dict, path) -> None:
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
+
+
+def plot_humidity_day(results: dict, RH_set: float, path) -> None:
+    """One day per controller: indoor RH (top) and indoor fan speed while running (bottom)."""
+    n = len(results)
+    fig = plt.figure(figsize=(9, 2.25 * n + 0.4))
+    subfigs = fig.subfigures(n, 1, hspace=0.02)
+    for i, (sf, (name, r), color) in enumerate(zip(subfigs, results.items(), SERIES)):
+        axH, axF = sf.subplots(2, 1, sharex=True, gridspec_kw=dict(height_ratios=[3, 1], hspace=0.12))
+        th = (r.t - r.t[0]) / HOUR
+        for ax in (axH, axF):
+            _shade_occupancy(ax, r, th, label=False)
+            ax.set_axisbelow(True)
+        axH.axhline(100 * RH_set, color=MUTED, lw=0.8, ls=(0, (3, 3)))
+        axH.axhline(60.0, color=MUTED, lw=0.8)
+        axH.plot(th, 100 * r.RH, color=color, lw=1.4)
+        axH.set_ylim(45, 70)
+        axH.set_ylabel("RH (%)")
+        axH.set_title(name, loc="left", fontsize=10, pad=4)
+        fan = np.where(r.cmd[:, 0] > 0, r.cmd[:, 1], np.nan)
+        axF.step(th, fan, where="post", color=color, lw=1.1)
+        axF.set_ylim(0.3, 1.05)
+        axF.set_yticks([0.4, 1.0])
+        axF.set_ylabel("fan (-)")
+        axF.set_xlim(0, 24)
+        axF.set_xticks(np.arange(0, 25, 3))
+        axF.set_xticklabels([f"{h:02d}:00" for h in range(0, 25, 3)] if i == n - 1 else [])
+    fig.suptitle(f"Indoor RH and fan speed over one day (dashed: set point {100 * RH_set:.0f} %; "
+                 "solid: 60 %; grey: occupied)",
+                 x=0.06, y=1.0, ha="left", va="bottom", fontsize=11, fontweight="semibold")
+    fig.savefig(path)
+    plt.close(fig)
