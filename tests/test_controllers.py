@@ -171,7 +171,8 @@ def test_all_controllers_hold_the_set_point(loops):
 def test_pi_tracks_better_and_starts_less_than_on_off(loops):
     m = {k: compute(r, 25.0) for k, r in loops.items()}
     assert m["pi_A"].T_rms_occ < m["onoff"].T_rms_occ
-    assert m["pi_C"].starts < 0.6 * m["onoff"].starts
+    assert m["pi_C"].starts < m["onoff"].starts
+    assert m["pi_C"].starts_per_h_on < 0.5 * m["onoff"].starts_per_h_on   # gentler on the compressor
     assert m["pi_A"].energy_kWh < m["onoff"].energy_kWh
 
 

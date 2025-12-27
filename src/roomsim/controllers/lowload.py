@@ -15,7 +15,14 @@ C. SigmaDeltaLowLoad: first-order sigma-delta modulation. The handler accumulate
    threshold and stops when the surplus does. The average delivered demand equals the request,
    so the PI keeps integrating normally. With threshold A = s_min T_ref / 2 the on time is
    s_min T_ref / (s_min - v) and the off time s_min T_ref / v, i.e. at v = s_min/2 one cycle of
-   4 T_ref.
+   4 T_ref. The accumulator is clamped to +-A: when the guard holds the compressor beyond a
+   switching point, the extra deficit or surplus is dropped instead of being paid back later
+   (paying it back kept the unit off for a long time while the room was already warm).
+
+   Choosing T_ref. Between switches the unit delivers s_min Q_max while the load takes v Q_max,
+   and the energy mismatch A Q_max is stored in the air, so the air-temperature ripple is
+       dT_pp = 2 A Q_max / C_a = s_min T_ref Q_max / C_a.
+   ``ripple_T_ref`` inverts this for a target ripple.
 
 Both respect the compressor guard (minimum run and stop times).
 """
@@ -23,6 +30,11 @@ Both respect the compressor guard (minimum run and stop times).
 from __future__ import annotations
 
 from .base import CompressorGuard
+
+
+def ripple_T_ref(dT_pp: float, C_a: float, Q_max: float, s_min: float) -> float:
+    """Sigma-delta time scale giving an air-temperature ripple dT_pp (peak to peak), s."""
+    return dT_pp * C_a / (s_min * Q_max)
 
 
 class HysteresisLowLoad:
@@ -81,6 +93,7 @@ class SigmaDeltaLowLoad:
         else:
             # low load: sigma-delta modulation between 0 and s_min
             self.acc += (v - self.s_prev) * self.Ts
+            self.acc = min(max(self.acc, -self.threshold), self.threshold)
             if not g.on and self.acc >= self.threshold and g.can_start(t):
                 g.set(t, True)
             elif g.on and self.acc <= -self.threshold and g.can_stop(t):

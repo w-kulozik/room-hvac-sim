@@ -82,8 +82,8 @@ occupied hours (mean CO2 950 ppm):
 | On/off thermostat (±0.5 K, full speed) | 11.38 | 174 | 0.35 | 49.2 | 0.0 |
 | On/off, fan continuous | 9.92 | 117 | 0.40 | 64.1 | 26.2 |
 | PI + hysteresis low-load handling (A) | 6.11 | 66 | 0.25 | 64.1 | 28.4 |
-| PI + sigma-delta low-load handling (C) | 6.12 | 84 | 0.29 | 63.7 | 27.2 |
-| PI (C), fan continuous | 7.13 | 88 | 0.29 | 63.8 | 27.2 |
+| PI + sigma-delta low-load handling (C) | 6.21 | 123 | 0.22 | 63.7 | 27.4 |
+| PI (C), fan continuous | 7.21 | 126 | 0.22 | 63.7 | 27.4 |
 
 ![Controller metrics](figures/controllers_metrics.png)
 
@@ -103,7 +103,13 @@ rather than cycles during occupied hours, so the effect there is small.
 **Low-load handling.** Below the 30 % minimum speed the compressor has to cycle. The PI computes
 a continuous demand and a separate handler turns it into feasible commands, with minimum run and
 stop times of 3 min. Handler A (thermostatic hysteresis, integrator frozen) is what many units
-do; handler C (sigma-delta) meets the mean demand exactly, so the PI keeps integrating.
+do; handler C (sigma-delta) meets the mean demand, so the PI keeps integrating. The sigma-delta
+time scale follows from the ripple it causes: between switches the energy mismatch is stored in
+the air, so the peak-to-peak ripple is s_min T_ref Q_max / C_a, and T_ref = 320 s gives 0.5 K.
+Its accumulator is clamped so that a deficit held back by the minimum run or stop time is not
+paid back later, which had kept the unit off while the room was already warm. Handler C ends up
+with the tightest temperature control and more, but shorter, cycles than A (3.3 starts per
+running hour against 11 for on/off).
 
 ### Humidity-aware fan control
 
@@ -120,24 +126,75 @@ Set points 25 °C and 55 % RH:
 
 | Controller | Energy (kWh) | Water removed (kg) | RH mean occ. (%) | RH std occ. (%) | h RH > 60 % occ. |
 |---|---|---|---|---|---|
-| PI (C), full fan | 6.12 | 0.0 | 63.7 | 2.15 | 27.2 |
-| H1 fan RH-PI | 7.20 | 5.3 | 55.3 | 0.82 | 0.0 |
-| H2 cascade | 7.20 | 5.3 | 55.2 | 0.50 | 0.0 |
+| PI (C), full fan | 6.21 | 0.0 | 63.7 | 2.07 | 27.4 |
+| H1 fan RH-PI | 7.27 | 5.2 | 55.3 | 0.81 | 0.0 |
+| H2 cascade | 7.28 | 5.2 | 55.2 | 0.50 | 0.0 |
 | On/off (reference) | 11.38 | 8.6 | 49.2 | 1.54 | 0.0 |
 
 ![Humidity control](figures/humidity_control.png)
 
-Both bring the humidity back to its set point for 18 % more energy than the plain PI, still 37 %
+Both bring the humidity back to its set point for 17 % more energy than the plain PI, still 36 %
 less than on/off. The two structures have the same mean performance; the cascade holds humidity
-more steadily and moves the fan about half as much. Keeping the controllers tuned for the nominal
+more steadily and moves the fan about a third less. Keeping the controllers tuned for the nominal
 unit and running them on a different one (dirty coil with bypass factor 0.30, or a 3.5 kW unit)
-gives the same ordering: RH standard deviation 0.50-0.76 % for the cascade against 0.82-0.98 %
+gives the same ordering: RH standard deviation 0.48-0.64 % for the cascade against 0.81-0.97 %
 for H1. The advantage is real but small, as expected when the outer process (room humidity) is
 much slower than anything the inner loop rejects.
 
+### Model-predictive control
+
+An economic MPC plans the air temperature over the next 24 h in 15-minute steps and re-plans
+every 15 minutes. It minimises the forecast electrical energy (the unit's COP is better in the
+cool hours), weighted by the electricity price when there is a tariff, plus a penalty for leaving
+the comfort band (25 ± 1 °C while occupied, up to 28 °C otherwise). The prediction model is the
+linear two-node RC model, discretised exactly; it knows nothing about humidity, the coil or the
+unit's part-load behaviour. All terms are linear, so each plan is a linear programme solved by
+HiGHS in about 10 ms.
+
+A Kalman filter on the air-temperature sensor estimates the unmeasured mass temperature and an
+unknown heat input to the air. The second state makes the predictions offset-free: whatever the
+model gets wrong shows up as a disturbance that the planner then compensates. Started 3 K wrong
+on the mass temperature, the estimate converges without bias but slowly (time constant ~14 h),
+because with a single air sensor a wrong mass temperature and an unknown heat input can only be
+told apart through the slow mass mode.
+
+The MPC supervises the PI rather than driving the compressor directly. Applying the planned
+cooling directly, with the low-load handler turning it into cycling between the 15-minute
+solves, left the cycling without feedback and produced 3.75 K·h outside the band over three days.
+In the final structure the plan sets the PI's set point, and the PI (60 s) does the tracking and
+the cycling. The planner keeps 0.6 K inside the occupied band for the PI's ripple; the margin
+was chosen from a sweep (0.3 K: 0.46 K·h outside the band, 0.6 K: 0.01 K·h, for 4 % more energy).
+
+![MPC over one day](figures/mpc_day.png)
+
+Three days, ventilation during occupied hours, tariff 0.15 / 0.60 EUR/kWh with the peak 14-20 h:
+
+| Controller | Energy (kWh) | Cost (EUR) | K·h outside band | Starts |
+|---|---|---|---|---|
+| PI, 25 °C constant | 6.21 | 2.15 | 0.000 | 123 |
+| PI, set-back, fixed start 6:00 | 5.62 | 1.91 | 0.000 | 39 |
+| MPC | 5.45 | 1.95 | 0.009 | 61 |
+| MPC, time-of-use tariff | 6.37 | **1.72** | 0.000 | 89 |
+| MPC, model parameters off by 20 % | 5.46 | 1.94 | 0.001 | 64 |
+| MPC, forecast +2 K and -30 % sun | 5.44 | 1.95 | 0.010 | 60 |
+
+- **Against a well-configured PI the energy saving is small**: 3 % against set-back with a fixed
+  early start, 12 % against a constant set point. Most of what the MPC finds (let the room float
+  at night, start just in time, sit at the warm edge of the band) a PI with a good schedule
+  already gets.
+- **With a time-of-use tariff the MPC cuts the cost by 10 %** while using 13 % more energy: it
+  cools the room down to 20 °C overnight, stores the cold in the thermal mass, and runs at lower
+  power through the day and the peak. A PI has no way to do this.
+- **Load shifting has a threshold.** Planning studies with different price ratios show no
+  shifting below a peak/off-peak ratio of about 3; above it, at most 15-23 % of the cooling in the
+  peak window moves out of it, depending on the width of the band. Pre-cooling the air pulls heat
+  out of the strongly coupled mass (180 W/K) and much of it leaks back before the peak.
+- **Robustness**: 20 % errors in five model parameters, or a forecast 2 K too warm with 30 % less
+  sun, change energy and comfort by less than 1 %. The Kalman disturbance state absorbs both.
+
 ## Verification
 
-All checks run in `pytest` (125 tests, about a minute).
+All checks run in `pytest` (138 tests, about a minute and a half).
 
 | Check | Result |
 |---|---|
@@ -157,6 +214,10 @@ All checks run in `pytest` (125 tests, about a minute).
 | PI anti-windup: integrator under saturation vs analytical value | 10⁻⁹ |
 | Sigma-delta: mean delivered demand, cycle length vs design formula | ±0.01, ±10 % |
 | Cascade inner loop on the real coil: coil temperature vs its set point | ±0.05 K |
+| Control model: exact discretisation; fixed point = continuous steady state | 10⁻¹² |
+| Control model vs plant with the unit off, one day | < 0.01 K |
+| Kalman filter: mass temperature and unknown 250 W heat input after 6 days | 10⁻³ K, 0.1 % |
+| MPC plan: feasible, inside the planning band, no cooling while the band is wide | always |
 
 ![Convergence](figures/convergence.png)
 
@@ -194,11 +255,15 @@ src/roomsim/
   metrics.py       energy, starts, comfort, humidity and CO2 indicators
   verification.py  analytical solutions and convergence studies (shared by tests and figures)
   plotting.py      figures
+  control_model.py linear RC model for the controllers, exact discretisation
+  estimation.py    Kalman filter with a disturbance state (offset-free)
+  tariff.py        time-of-use electricity price
   controllers/     on/off thermostat, discrete PI with anti-windup, low-load handlers,
-                   humidity-aware fan control (direct and cascade)
+                   humidity-aware fan control (direct and cascade), economic MPC
 scripts/run_baseline.py         free-floating baseline and verification figures
 scripts/compare_controllers.py  controller comparison table and figures
 scripts/compare_humidity.py     humidity-aware fan control and robustness to the unit
+scripts/compare_mpc.py          MPC against PI, tariff and robustness cases
 tests/
 docs/specification.md
 ```
@@ -211,10 +276,10 @@ pytest -v
 python scripts/run_baseline.py
 python scripts/compare_controllers.py
 python scripts/compare_humidity.py
+python scripts/compare_mpc.py
 ```
 
 ## Roadmap
 
-1. Linear MPC with a Kalman filter estimating the unmeasured mass temperature, tested under
-   ±20 % model mismatch.
-2. Ventilation-level strategies driven by CO2.
+1. Ventilation-level strategies driven by CO2.
+2. MPC with humidity in the model, so that the planner can trade sensible against latent load.

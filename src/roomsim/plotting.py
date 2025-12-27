@@ -250,3 +250,35 @@ def plot_humidity_day(results: dict, RH_set: float, path) -> None:
                  x=0.06, y=1.0, ha="left", va="bottom", fontsize=11, fontweight="semibold")
     fig.savefig(path)
     plt.close(fig)
+
+
+def plot_mpc_day(results: dict, comfort, tariff, path) -> None:
+    """Air temperature against the comfort band (top) and hourly mean electrical power (bottom)."""
+    fig, (axT, axP) = plt.subplots(2, 1, figsize=(9, 6.0), sharex=True,
+                                   gridspec_kw=dict(height_ratios=[3, 2], hspace=0.12))
+    r0 = next(iter(results.values()))
+    th = (r0.t - r0.t[0]) / HOUR
+    lo, hi = comfort.bounds(r0.t)
+    axT.fill_between(th, lo, hi, color=GRID, alpha=0.6, lw=0, step="post", label="comfort band")
+    peak = np.asarray(tariff(r0.t)) > tariff.offpeak
+    for ax in (axT, axP):
+        ax.set_axisbelow(True)
+        edges = np.flatnonzero(np.diff(peak.astype(int))) + 1
+        for a, b in zip(edges[::2], edges[1::2]):
+            ax.axvspan(th[a], th[b], color=SHADE, lw=0, zorder=0)
+    for (name, r), color in zip(results.items(), SERIES):
+        axT.plot(th, r.T_a, color=color, lw=1.3, label=name)
+        hours = np.floor(th[:-1]).astype(int)
+        P_h = np.bincount(hours, weights=r.unit["P_el"][:-1]) / np.bincount(hours)
+        axP.step(np.arange(len(P_h) + 1), np.append(P_h, P_h[-1]), where="post", color=color, lw=1.5)
+    axT.set_ylim(min(19.5, min(r.T_a.min() for r in results.values()) - 0.3), 28.8)
+    axT.set_ylabel("$T_a$ (°C)")
+    axT.set_title("Air temperature and electrical power over one day "
+                  "(grey band: comfort; shaded: peak tariff)", loc="left")
+    _legend_top(axT, 4)
+    axP.set_ylabel("mean power (W)")
+    axP.set_xlim(0, 24)
+    axP.set_xticks(np.arange(0, 25, 3))
+    axP.set_xticklabels([f"{h:02d}:00" for h in range(0, 25, 3)])
+    fig.savefig(path)
+    plt.close(fig)

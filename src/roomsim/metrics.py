@@ -52,3 +52,10 @@ def compute(r: SimResult, T_set: float, band: float = 1.0) -> Metrics:
         CO2_mean_occ=float(C[occ].mean()),
         runtime_h=float(runtime_h),
     )
+
+
+def energy_cost(r: SimResult, tariff) -> float:
+    """Electricity cost over the result, EUR. Power at each grid point is taken as constant over
+    the following step (left rectangle; the 60 s step makes the error negligible)."""
+    P = r.unit["P_el"][:-1]
+    return float(np.sum(P * tariff(r.t[:-1])) * r.dt / 3.6e6)
