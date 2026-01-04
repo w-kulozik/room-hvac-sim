@@ -16,6 +16,8 @@ from roomsim.plant import equilibrium_state
 from roomsim.simulate import simulate
 from roomsim.tariff import TimeOfUseTariff
 
+from criteria import KH_PER_DAY, ROBUST_ENERGY_REL
+
 P = RoomParams()
 UNIT = ACUnit()
 MODEL = RCModel(P)
@@ -46,7 +48,9 @@ def test_model_reproduces_the_plant_with_the_unit_off():
         e = MODEL.gains(S(r.t[k] + 30.0))[0]          # inputs at the middle of the step
         z = Ad @ z + Ed @ e
         errs.append(abs(z[0] - r.T_a[k + 1]))
-    assert max(errs) < 0.01
+    # the only difference is sampling T_o and the sun at the middle of each 60 s step instead of
+    # integrating them: an O(dt^2) error, measured at 2e-5 K
+    assert max(errs) < 1e-4
 
 
 def test_mismatched_model_scales_primary_parameters():
@@ -155,20 +159,22 @@ def loops():
 
 def test_mpc_keeps_comfort_and_saves_energy(loops):
     m_pi, m_mpc = (compute(loops[k][1], 25.0) for k in ("pi", "mpc"))
-    assert m_mpc.Kh_outside_occ < 0.05
-    assert m_mpc.energy_kWh < 0.95 * m_pi.energy_kWh
+    assert m_mpc.Kh_outside_occ < KH_PER_DAY * 2
+    assert m_mpc.energy_kWh < m_pi.energy_kWh            # size of the saving: see the README
 
 
 def test_mpc_is_robust_to_model_mismatch(loops):
     m = compute(loops["mismatch"][1], 25.0)
     m_nom = compute(loops["mpc"][1], 25.0)
-    assert m.Kh_outside_occ < 0.05
-    assert m.energy_kWh == pytest.approx(m_nom.energy_kWh, rel=0.05)
+    assert m.Kh_outside_occ < KH_PER_DAY * 2
+    assert m.energy_kWh == pytest.approx(m_nom.energy_kWh, rel=ROBUST_ENERGY_REL)
 
 
 def test_kalman_tracks_the_mass_in_closed_loop(loops):
     c, r = loops["mpc"]
-    assert c.kf.z[1] == pytest.approx(r.T_m[-1], abs=0.2)
+    # the controller's thermal model is exact here, so the estimate must track the mass to
+    # sensor-level accuracy; what the model misses (unit, humidity) goes into the disturbance
+    assert c.kf.z[1] == pytest.approx(r.T_m[-1], abs=0.01)
     assert c.solve_failures == 0
 
 

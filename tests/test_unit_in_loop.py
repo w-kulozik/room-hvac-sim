@@ -57,16 +57,16 @@ def test_electrical_energy_matches_logged_power():
 
 def test_start_up_ramp_after_a_start():
     r = simulate(P, HOT, X_HOT, 1 * HOUR, dt=10.0, controller=Fixed(1.0), unit=UNIT)
-    Q = r.unit["Q_coil"]
-    k_tau = int(UNIT.p.tau_start / r.dt)
-    assert Q[0] == 0.0
-    assert Q[k_tau] == pytest.approx((1 - np.exp(-1)) * Q[10 * k_tau], rel=0.05)
-    # during the ramp the compressor draws the power of the full capacity at the same air state
-    k = 3
-    full = UNIT.operate(1.0, 1.0, r.T_a[k], r.W[k], HOT.T_o)
-    assert r.unit["P_el"][k] == pytest.approx(full.P_el, rel=1e-12)
-    ramp = 1.0 - np.exp(-k * r.dt / UNIT.p.tau_start)
-    assert r.unit["Q_coil"][k] < (ramp + 0.05) * full.Q_coil
+    assert r.unit["Q_coil"][0] == 0.0
+    for k in (3, int(UNIT.p.tau_start / r.dt), 30):
+        ramp = 1.0 - np.exp(-k * r.dt / UNIT.p.tau_start)
+        # delivered capacity: the unit at the logged air state with the analytical ramp
+        st = UNIT.operate(1.0, 1.0, r.T_a[k], r.W[k], HOT.T_o, ramp=ramp, M_c=r.M_coil[k])
+        assert r.unit["Q_coil"][k] == pytest.approx(st.Q_coil, rel=1e-12)
+        # power: that of the full requested capacity at the same air state
+        full = UNIT.operate(1.0, 1.0, r.T_a[k], r.W[k], HOT.T_o)
+        assert r.unit["P_el"][k] == pytest.approx(full.P_el, rel=1e-12)
+        assert st.Q_coil < full.Q_coil
 
 
 # ---- accuracy of the coupling ---------------------------------------------------------

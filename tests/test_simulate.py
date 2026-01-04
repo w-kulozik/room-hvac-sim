@@ -8,6 +8,7 @@ from roomsim.integrators import euler_stability_limit, euler_step, rk4_step
 from roomsim.params import RoomParams
 from roomsim.plant import IDX_Q_SENS, U_OFF, equilibrium_state, jacobian
 from roomsim.simulate import periodic_state, simulate
+from roomsim.verification import moisture_linear_system
 
 P = RoomParams()
 
@@ -35,9 +36,12 @@ def test_euler_stability_limit_scalar_and_room():
     S = SummerScenario()
     x0 = equilibrium_state(26.0, 26.0, float(S.W_o(0.0)))
     dt_max = euler_stability_limit(jacobian(0.0, x0, U_OFF, S(0.0), P))
-    # fastest mode is the air-buffer moisture exchange, not the air temperature
-    assert 600.0 < dt_max < 1000.0
-    assert dt_max > 60.0
+    # The Jacobian is block triangular (temperatures do not depend on humidity), so its fastest
+    # mode is that of the air-buffer moisture subsystem, not the air temperature
+    A, _ = moisture_linear_system(P, 26.0, float(S.W_o(0.0)))
+    lam_fast = np.linalg.eigvals(A).real.min()
+    assert dt_max == pytest.approx(2.0 / abs(lam_fast), rel=1e-6)
+    assert dt_max > 10 * 60.0                  # the production step is far inside the limit
 
 
 # ---- simulation loop -------------------------------------------------------------------

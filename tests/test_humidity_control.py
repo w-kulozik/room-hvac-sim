@@ -14,6 +14,8 @@ from roomsim.params import RoomParams
 from roomsim.plant import equilibrium_state
 from roomsim.simulate import coil_sensor, simulate
 
+from criteria import KH_PER_DAY, RH_ACCURACY
+
 P = RoomParams()
 UNIT = ACUnit()
 F_MIN = UNIT.p.f_min
@@ -130,9 +132,9 @@ def loops():
 def test_humidity_controllers_hold_the_rh_set_point(loops):
     for name in ("h1", "h2"):
         m = compute(loops[name], 25.0)
-        assert m.RH_mean_occ == pytest.approx(55.0, abs=1.0), name
+        assert m.RH_mean_occ == pytest.approx(55.0, abs=RH_ACCURACY), name
         assert m.h_RH60_occ == 0.0, name
-        assert m.Kh_outside_occ < 0.1, name
+        assert m.Kh_outside_occ < KH_PER_DAY * 2, name
 
 
 def test_dehumidification_costs_energy_but_less_than_on_off(loops):

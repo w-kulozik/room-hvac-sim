@@ -10,6 +10,8 @@ from roomsim.params import RoomParams
 from roomsim.plant import equilibrium_state
 from roomsim.simulate import simulate
 
+from criteria import RH_RESOLUTION_W
+
 P = RoomParams()
 UNIT = ACUnit()
 M_MAX = UNIT.p.M_coil_max
@@ -92,6 +94,6 @@ def test_continuous_fan_returns_moisture_to_the_room():
     runs = {fan: simulate(P, HUMID, X0, 6 * HOUR, controller=Schedule(15 * 60, 15 * 60, fan),
                           unit=UNIT) for fan in (False, True)}
     W_auto, W_cont = (runs[f].W[-int(2 * HOUR / 60):].mean() for f in (False, True))
-    assert W_cont > W_auto + 2e-4                       # clearly more humid with the fan on
+    assert W_cont > W_auto + RH_RESOLUTION_W           # more humid by more than 1 %RH
     drained = {f: np.sum(r.unit["m_drain"]) * r.dt for f, r in runs.items()}
     assert drained[True] < 0.5 * drained[False]          # most condensate never reaches the drain

@@ -93,8 +93,9 @@ def test_energy_residual_order_with_simpson(method, order):
     """(b) Independent quadrature of the logged flows: residual falls with the method order."""
     res = [v.energy_residual_simpson(method, dt) for dt in BALANCE_DTS]
     assert v.convergence_order(BALANCE_DTS, res) == pytest.approx(order, abs=0.2)
-    # and it is small in absolute terms at the production step
-    assert v.energy_residual_simpson(method, 60.0) < (1.0 if method == "rk4" else 1e5)
+    # at the production step the residual is what the measured order predicts
+    predicted = res[-1] * (60.0 / BALANCE_DTS[-1]) ** order
+    assert v.energy_residual_simpson(method, 60.0) == pytest.approx(predicted, rel=0.1)
 
 
 # ---- 5.5 moisture without sources --------------------------------------------------------
