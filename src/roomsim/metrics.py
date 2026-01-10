@@ -32,7 +32,7 @@ class Metrics:
 def compute(r: SimResult, T_set: float, band: float = 1.0) -> Metrics:
     """Indicators over the whole result. Row k covers [t_k, t_k + dt), so the last row is dropped."""
     dt = r.dt
-    s = r.cmd[:-1, IDX_CMD_S]
+    s = r.unit.cmd[:-1, IDX_CMD_S]
     on = s > 0
     starts = int(np.sum(on[1:] & ~on[:-1]) + (1 if on[0] else 0))
     occ = np.asarray(r.d.n_occ)[:-1] > 0
@@ -41,7 +41,7 @@ def compute(r: SimResult, T_set: float, band: float = 1.0) -> Metrics:
     outside = np.maximum(np.abs(dev) - band, 0.0)
     runtime_h = on.sum() * dt / HOUR
     return Metrics(
-        energy_kWh=float((r.E_el[-1] - r.E_el[0]) / 3.6e6),
+        energy_kWh=float((r.unit.E_el[-1] - r.unit.E_el[0]) / 3.6e6),
         starts=starts,
         starts_per_h_on=starts / runtime_h if runtime_h > 0 else 0.0,
         T_rms_occ=float(np.sqrt(np.mean(dev[occ] ** 2))),
@@ -57,5 +57,5 @@ def compute(r: SimResult, T_set: float, band: float = 1.0) -> Metrics:
 def energy_cost(r: SimResult, tariff) -> float:
     """Electricity cost over the result, EUR. Power at each grid point is taken as constant over
     the following step (left rectangle; the 60 s step makes the error negligible)."""
-    P = r.unit["P_el"][:-1]
+    P = r.unit.op["P_el"][:-1]
     return float(np.sum(P * tariff(r.t[:-1])) * r.dt / 3.6e6)

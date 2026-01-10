@@ -12,10 +12,10 @@ ventilation) and the unit converts it into u at every Runge-Kutta stage, using t
 state of that stage. Holding Q_sens itself over the sampling interval instead would make the
 closed loop only first-order accurate, because the coil output depends on the air state.
 
-With a unit, the water held on its coil, M_c, is integrated as an additional state.
-Cumulative boundary heat, water and CO2, and the electrical energy of the unit, are integrated
-as extra states with the same method, so the balances in ``SimResult`` reflect exactly what the
-integrator did.
+Integrated state vector: [room state (5), water on the coil (with a unit), cumulative integrals].
+The cumulative integrals (boundary heat, room water, CO2, external water, electrical energy,
+drained condensate) use the same method as the state, so the balances in ``SimResult`` reflect
+exactly what the integrator did.
 """
 
 from __future__ import annotations
@@ -30,11 +30,14 @@ from .integrators import STEPPERS
 from .params import RoomParams
 from .plant import (IDX_M_LAT, IDX_Q_SENS, IDX_TA, IDX_V_VENT, IDX_W, N_INPUTS, N_STATES,
                     STATE_SCALE, Fluxes, derivatives, fluxes, measure)
-from .results import SimResult
+from .results import UNIT_FIELDS, SimResult, UnitLog
 
 # Command vector when a unit is present
 IDX_CMD_S, IDX_CMD_FAN, IDX_CMD_VENT = 0, 1, 2
 N_CMD = 3
+
+# Cumulative integrals appended to the state
+AUX = ("E_in", "M_in", "CO2_in", "W_ext", "E_el", "M_drain")
 
 
 class Controller(Protocol):
@@ -47,12 +50,6 @@ class Controller(Protocol):
         ...
 
 
-# Cumulative integrals: boundary heat (J), room water (kg), CO2 (m3), electrical energy (J),
-# water entering from outside (kg) and condensate drained (kg)
-N_AUX = 6
-UNIT_LOG = ("Q_sens", "m_lat", "Q_coil", "P_el", "COP", "T_s", "T_out", "m_drain")
-
-
 def _ratio(a: float, b: float, what: str) -> int:
     n = round(a / b)
     if n < 1 or abs(n * b - a) > 1e-9 * max(abs(a), 1.0):
@@ -62,7 +59,8 @@ def _ratio(a: float, b: float, what: str) -> int:
 
 def coil_sensor(st: CoilState, T_a: float) -> float:
     """Evaporator thermistor: coil surface while the unit runs, room air when it is idle."""
-    return st.T_s if (st.Q_coil > 0.0 or st.P_fan_in > 0.0) and st.T_s == st.T_s else T_a
+    running = st.Q_coil > 0.0 or st.P_fan_in > 0.0
+    return st.T_s if running and not np.isnan(st.T_s) else T_a
 
 
 def unit_input(unit: ACUnit, cmd: np.ndarray, ramp: float, x: np.ndarray,
@@ -76,11 +74,40 @@ def unit_input(unit: ACUnit, cmd: np.ndarray, ramp: float, x: np.ndarray,
     return u, st
 
 
+class _Actuation:
+    """Turns the held controller output into plant inputs; tracks compressor starts."""
+
+    def __init__(self, unit: ACUnit | None, t_start: float, running_at_start: bool):
+        self.unit = unit
+        self.out = np.zeros(N_CMD if unit is not None else N_INPUTS)
+        self.running = running_at_start
+        self.t_started = -np.inf if running_at_start else t_start
+
+    @property
+    def n_states(self) -> int:
+        return 1 if self.unit is not None else 0       # water held on the coil
+
+    def set_output(self, t: float, out: np.ndarray) -> None:
+        self.out = np.asarray(out, dtype=float)
+        if self.unit is not None:
+            on = self.out[IDX_CMD_S] > 0
+            if on and not self.running:
+                self.t_started = t
+            self.running = on
+
+    def inputs(self, t: float, x: np.ndarray, d: Disturbances) -> tuple[np.ndarray, CoilState]:
+        """Plant input and unit operating point at time t and full integrated state x."""
+        if self.unit is None:
+            return self.out, OFF_STATE
+        ramp = self.unit.start_ramp(t - self.t_started) if self.out[IDX_CMD_S] > 0 else 1.0
+        return unit_input(self.unit, self.out, ramp, x, d, M_c=x[N_STATES])
+
+
 def simulate(
     p: RoomParams,
     scenario: Scenario,
     x0: np.ndarray,
-    t_end: float,
+    duration: float,
     dt: float = 60.0,
     t_start: float = 0.0,
     method: str = "rk4",
@@ -90,40 +117,30 @@ def simulate(
     unit_running_at_start: bool = False,
     M_coil0: float = 0.0,
 ) -> SimResult:
+    """Simulate ``duration`` seconds from time ``t_start`` (seconds from midnight of day 0)."""
     step = STEPPERS[method]
-    n_steps = _ratio(t_end - t_start, dt, "t_end - t_start")
+    n_steps = _ratio(duration, dt, "duration")
     n_ctrl = _ratio(dt_ctrl, dt, "dt_ctrl") if controller is not None else 1
-
-    n_u = 1 if unit is not None else 0          # unit states: water on the coil
-    i_aux = N_STATES + n_u
-    x = np.concatenate([np.asarray(x0, dtype=float), [M_coil0] * n_u, np.zeros(N_AUX)])
-    out = np.zeros(N_CMD if unit is not None else N_INPUTS)    # held controller output
-    running = unit_running_at_start
-    t_started = -np.inf if running else t_start
+    act = _Actuation(unit, t_start, unit_running_at_start)
+    i_aux = N_STATES + act.n_states
+    x = np.concatenate([np.asarray(x0, dtype=float), [M_coil0] * act.n_states, np.zeros(len(AUX))])
 
     t_log = t_start + dt * np.arange(n_steps + 1)
-    x_log = np.empty((n_steps + 1, i_aux + N_AUX))
+    x_log = np.empty((n_steps + 1, len(x)))
     u_log = np.empty((n_steps + 1, N_INPUTS))
-    c_log = np.zeros((n_steps + 1, N_CMD)) if unit is not None else None
     d_log = np.empty((n_steps + 1, len(Disturbances._fields)))
     q_log = np.empty((n_steps + 1, len(Fluxes._fields)))
-    unit_log = np.zeros((n_steps + 1, len(UNIT_LOG))) if unit is not None else None
-
-    def plant_input(tt: float, xx: np.ndarray, d: Disturbances):
-        if unit is None:
-            return out, OFF_STATE
-        ramp = unit.start_ramp(tt - t_started) if out[IDX_CMD_S] > 0 else 1.0
-        return unit_input(unit, out, ramp, xx, d, M_c=xx[N_STATES])
+    c_log = np.zeros((n_steps + 1, N_CMD))
+    op_log = np.zeros((n_steps + 1, len(UNIT_FIELDS)))
 
     def log(k: int, t: float, x: np.ndarray, d: Disturbances) -> None:
-        u, st = plant_input(t, x, d)
-        x_log[k] = x
-        u_log[k] = u
+        u, st = act.inputs(t, x, d)
+        x_log[k], u_log[k] = x, u
         d_log[k] = [float(v) for v in d]
         q_log[k] = fluxes(t, x[:N_STATES], u, d, p)
         if unit is not None:
-            c_log[k] = out
-            unit_log[k] = [getattr(st, name) for name in UNIT_LOG]
+            c_log[k] = act.out
+            op_log[k] = [getattr(st, name) for name in UNIT_FIELDS]
 
     for k in range(n_steps):
         t = t_log[k]
@@ -131,47 +148,33 @@ def simulate(
         if controller is not None and k % n_ctrl == 0:
             y = measure(x[:N_STATES], p)
             if unit is not None:
-                y = np.append(y, coil_sensor(plant_input(t, x, d_k)[1], x[IDX_TA]))
-            out = np.asarray(controller.step(t, y), dtype=float)
-            if unit is not None:
-                now_on = out[IDX_CMD_S] > 0
-                if now_on and not running:
-                    t_started = t
-                running = now_on
-
+                y = np.append(y, coil_sensor(act.inputs(t, x, d_k)[1], x[IDX_TA]))
+            act.set_output(t, controller.step(t, y))
         held = {name: getattr(d_k, name) for name in PIECEWISE_CONSTANT}
 
         def f(tt: float, xx: np.ndarray) -> np.ndarray:
             d = scenario(tt)._replace(**held)
-            u, st = plant_input(tt, xx, d)
+            u, st = act.inputs(tt, xx, d)
             fl = fluxes(tt, xx[:N_STATES], u, d, p)
-            return np.concatenate([derivatives(fl, p), [st.dM_coil] * n_u, [fl.boundary_total,
-                                   fl.water_boundary_total, fl.co2_total, st.P_el,
-                                   fl.water_external, st.m_drain]])
+            aux = [fl.boundary_total, fl.water_boundary_total, fl.co2_total, fl.water_external,
+                   st.P_el, st.m_drain]
+            return np.concatenate([derivatives(fl, p), [st.dM_coil] * act.n_states, aux])
 
         log(k, t, x, d_k)
         x = step(f, t, x, dt)
 
     log(n_steps, t_log[-1], x, scenario(t_log[-1]))
 
+    aux = {name: x_log[:, i_aux + i] for i, name in enumerate(AUX)}
+    unit_log = None
+    if unit is not None:
+        unit_log = UnitLog(cmd=c_log, op={n: op_log[:, i] for i, n in enumerate(UNIT_FIELDS)},
+                           M_coil=x_log[:, N_STATES], E_el=aux["E_el"], M_drain=aux["M_drain"])
     return SimResult(
-        t=t_log,
-        x=x_log[:, :N_STATES],
-        u=u_log,
-        d=Disturbances(*d_log.T),
+        t=t_log, x=x_log[:, :N_STATES], u=u_log, d=Disturbances(*d_log.T),
         q={name: q_log[:, i] for i, name in enumerate(Fluxes._fields)},
-        E_in=x_log[:, i_aux],
-        M_in=x_log[:, i_aux + 1],
-        CO2_in=x_log[:, i_aux + 2],
-        E_el=x_log[:, i_aux + 3],
-        W_ext=x_log[:, i_aux + 4],
-        M_drain=x_log[:, i_aux + 5],
-        M_coil=x_log[:, N_STATES] if unit is not None else None,
-        cmd=c_log,
-        unit={name: unit_log[:, i] for i, name in enumerate(UNIT_LOG)} if unit is not None else None,
-        p=p,
-        method=method,
-        dt=dt,
+        E_in=aux["E_in"], M_in=aux["M_in"], CO2_in=aux["CO2_in"], W_ext=aux["W_ext"],
+        p=p, method=method, dt=dt, unit=unit_log,
     )
 
 
@@ -187,13 +190,15 @@ def periodic_state(
     unit: ACUnit | None = None,
     max_iter: int = 10,
 ) -> np.ndarray:
-    """Initial state of the periodic steady state, found by Newton shooting.
+    """Initial room state of the periodic steady state, found by Newton shooting.
 
-    Solves F(x) = Phi_T(x) - x = 0, where Phi_T maps the state at t = 0 to the state one
+    Solves F(x) = Phi_T(x) - x = 0, where Phi_T maps the room state at t = 0 to the state one
     period later. The mass time constant (~3 days) makes plain warm-up slow: after a week
     the daily maximum still drifts by ~0.15 K/day. The thermal part is linear, so Newton
     converges in one or two iterations; the Jacobian of Phi_T is built by finite differences.
-    ``controller_factory`` returns a fresh controller per run, so controller state is reset.
+    ``controller_factory`` returns a fresh controller per run. Controller states and the water
+    on the coil restart at each evaluation, so with a controller the result is periodic only in
+    the room state; closed-loop runs use warm-up days instead.
     """
     scale = STATE_SCALE                           # finite-difference steps
     tol = 1e-3 * scale                            # periodicity error accepted after one period

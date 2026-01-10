@@ -179,11 +179,11 @@ def test_pi_tracks_better_and_starts_less_than_on_off(loops):
 
 def test_commands_are_feasible(loops):
     for name, r in loops.items():
-        s, f = r.cmd[:, IDX_CMD_S], r.cmd[:, IDX_CMD_FAN]
+        s, f = r.unit.cmd[:, IDX_CMD_S], r.unit.cmd[:, IDX_CMD_FAN]
         assert np.all((s == 0) | ((s >= S_MIN - 1e-12) & (s <= 1.0))), name
         assert np.all((f == 0) == (s == 0)), name                       # fan 'auto'
         occupied = np.asarray(r.d.n_occ) > 0
-        assert np.all(r.cmd[occupied, IDX_CMD_VENT] == VENT.V_occupied), name
+        assert np.all(r.unit.cmd[occupied, IDX_CMD_VENT] == VENT.V_occupied), name
 
 
 def test_balances_close_in_closed_loop(loops):
@@ -194,7 +194,7 @@ def test_balances_close_in_closed_loop(loops):
 
 def test_minimum_times_hold_in_closed_loop(loops):
     for name, r in loops.items():
-        on = r.cmd[:-1, IDX_CMD_S] > 0
+        on = r.unit.cmd[:-1, IDX_CMD_S] > 0
         edges = np.flatnonzero(np.diff(on.astype(int))) + 1
         if len(edges) > 2:
             assert np.diff(edges).min() * r.dt >= 180.0, name
@@ -206,4 +206,4 @@ def test_pi_rejects_a_load_step_without_offset():
     r = simulate(P, d, equilibrium_state(25.0, 27.0, 0.0116), 12 * HOUR, controller=ctrl, unit=UNIT)
     w = r.window(8 * HOUR)
     assert abs(w.T_a.mean() - 25.0) < 0.05
-    assert np.all(w.cmd[:, IDX_CMD_S] > S_MIN)            # high load: continuous modulation
+    assert np.all(w.unit.cmd[:, IDX_CMD_S] > S_MIN)            # high load: continuous modulation

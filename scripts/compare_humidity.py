@@ -39,8 +39,8 @@ def rh_std_occ(r) -> float:
 
 def fan_travel_per_h(r) -> float:
     """Total variation of the fan command per running hour: actuator wear and noise."""
-    run = r.cmd[:, 0] > 0
-    f = r.cmd[run, 1]
+    run = r.unit.cmd[:, 0] > 0
+    f = r.unit.cmd[run, 1]
     return float(np.abs(np.diff(f)).sum() / (run.sum() * r.dt / 3600.0))
 
 
@@ -71,7 +71,7 @@ def main() -> None:
              "h RH > 60 % occ. | T rms occ. (K) | Starts |", "|" + "---|" * 8]
     for name, r in {**results, "On/off (reference)": onoff}.items():
         m = compute(r, T_SET)
-        water = float(np.sum(r.unit["m_lat"][:-1]) * r.dt)
+        water = float(np.sum(r.unit.op["m_lat"][:-1]) * r.dt)
         lines.append(f"| {name} | {m.energy_kWh:.2f} | {water:.1f} | {m.RH_mean_occ:.1f} | "
                      f"{rh_std_occ(r):.2f} | {m.h_RH60_occ:.1f} | {m.T_rms_occ:.2f} | {m.starts} |")
     table = "\n".join(lines)

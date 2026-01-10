@@ -70,23 +70,23 @@ def test_rates_are_continuous_at_the_full_and_dry_limits():
 def test_coil_fills_then_drains():
     r = simulate(P, HUMID, X0, 1 * HOUR, dt=10.0, controller=Schedule(4 * HOUR, 0, False, s=1.0),
                  unit=UNIT)
-    M, drain = r.M_coil, r.unit["m_drain"]
+    M, drain = r.unit.M_coil, r.unit.op["m_drain"]
     assert M[0] == 0.0 and np.all(np.diff(M) >= -1e-15)
     k_full = np.argmax(M > 0.95 * M_MAX)
     assert drain[:k_full].max() == 0.0                 # nothing drains while the coil wets
-    assert drain[-1] > 0.9 * r.unit["m_lat"][-1]       # then condensate leaves at its own rate
+    assert drain[-1] > 0.9 * r.unit.op["m_lat"][-1]       # then condensate leaves at its own rate
     # time to wet the coil: M_max / condensation rate (rate ramps up after the start)
     t_wet = r.t[k_full] - r.t[0]
-    assert 0.8 * M_MAX / r.unit["m_lat"][k_full] < t_wet < 2.0 * M_MAX / r.unit["m_lat"][k_full]
+    assert 0.8 * M_MAX / r.unit.op["m_lat"][k_full] < t_wet < 2.0 * M_MAX / r.unit.op["m_lat"][k_full]
 
 
 def test_water_of_room_and_coil_is_conserved():
     """Room air + buffer + coil film exchange water only with outdoor air, occupants and drain."""
     r = simulate(P, HUMID, X0, 3 * HOUR, controller=Schedule(20 * 60, 20 * 60, True), unit=UNIT)
-    assert r.M_drain[-1] > 0.0 and r.M_coil.max() > 0.9 * M_MAX     # the check is not trivial
+    assert r.unit.M_drain[-1] > 0.0 and r.unit.M_coil.max() > 0.9 * M_MAX     # the check is not trivial
     assert np.abs(r.system_water_residual).max() < 1e-13
     assert np.abs(r.water_residual).max() < 1e-13                    # room alone, as before
-    assert r.M_coil.min() >= -1e-12 and r.M_coil.max() <= M_MAX + 1e-12
+    assert r.unit.M_coil.min() >= -1e-12 and r.unit.M_coil.max() <= M_MAX + 1e-12
 
 
 def test_continuous_fan_returns_moisture_to_the_room():
@@ -95,5 +95,5 @@ def test_continuous_fan_returns_moisture_to_the_room():
                           unit=UNIT) for fan in (False, True)}
     W_auto, W_cont = (runs[f].W[-int(2 * HOUR / 60):].mean() for f in (False, True))
     assert W_cont > W_auto + RH_RESOLUTION_W           # more humid by more than 1 %RH
-    drained = {f: np.sum(r.unit["m_drain"]) * r.dt for f, r in runs.items()}
+    drained = {f: np.sum(r.unit.op["m_drain"]) * r.dt for f, r in runs.items()}
     assert drained[True] < 0.5 * drained[False]          # most condensate never reaches the drain

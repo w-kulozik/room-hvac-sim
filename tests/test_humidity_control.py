@@ -153,8 +153,8 @@ def test_cascade_holds_humidity_more_steadily(loops):
 def test_fan_commands_within_limits_and_balances_close(loops):
     for name in ("h1", "h2"):
         r = loops[name]
-        s, f = r.cmd[:, 0], r.cmd[:, 1]
+        s, f = r.unit.cmd[:, 0], r.unit.cmd[:, 1]
         assert np.all(f[s > 0] >= F_MIN - 1e-12) and np.all(f <= 1.0)
         assert np.all(f[s == 0] == 0.0)                  # fan follows the compressor ('auto')
         assert np.abs(r.system_water_residual).max() < 1e-12
-        assert math.isfinite(r.E_el[-1])
+        assert math.isfinite(r.unit.E_el[-1])

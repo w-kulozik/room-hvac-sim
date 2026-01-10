@@ -32,8 +32,8 @@ def test_unit_cools_and_dries_the_room():
                  unit_running_at_start=True)
     assert r.T_a[-1] < r.T_a[0] - 4.0
     assert r.W[-1] < r.W[0]
-    assert np.all(r.unit["Q_sens"] > 0) and np.all(r.unit["m_lat"] >= 0)
-    assert r.E_el[-1] > 0
+    assert np.all(r.unit.op["Q_sens"] > 0) and np.all(r.unit.op["m_lat"] >= 0)
+    assert r.unit.E_el[-1] > 0
 
 
 def test_balances_close_with_the_unit_running():
@@ -44,28 +44,28 @@ def test_balances_close_with_the_unit_running():
     assert np.abs(r.co2_residual).max() < 1e-13
     # the unit term in the balance is what the coil and fan delivered
     k = 500
-    assert r.q["q_hvac"][k] == pytest.approx(-r.unit["Q_sens"][k] + UNIT.p.P_fan_in_nom * 0.7**3)
-    assert r.q["m_hvac"][k] == pytest.approx(-r.unit["m_lat"][k])
+    assert r.q["q_hvac"][k] == pytest.approx(-r.unit.op["Q_sens"][k] + UNIT.p.P_fan_in_nom * 0.7**3)
+    assert r.q["m_hvac"][k] == pytest.approx(-r.unit.op["m_lat"][k])
 
 
 def test_electrical_energy_matches_logged_power():
     r = simulate(P, HOT, X_HOT, 3 * HOUR, controller=Fixed(0.7), unit=UNIT,
                  unit_running_at_start=True)
-    trap = np.sum(0.5 * (r.unit["P_el"][1:] + r.unit["P_el"][:-1])) * r.dt
-    assert r.E_el[-1] == pytest.approx(trap, rel=1e-5)
+    trap = np.sum(0.5 * (r.unit.op["P_el"][1:] + r.unit.op["P_el"][:-1])) * r.dt
+    assert r.unit.E_el[-1] == pytest.approx(trap, rel=1e-5)
 
 
 def test_start_up_ramp_after_a_start():
     r = simulate(P, HOT, X_HOT, 1 * HOUR, dt=10.0, controller=Fixed(1.0), unit=UNIT)
-    assert r.unit["Q_coil"][0] == 0.0
+    assert r.unit.op["Q_coil"][0] == 0.0
     for k in (3, int(UNIT.p.tau_start / r.dt), 30):
         ramp = 1.0 - np.exp(-k * r.dt / UNIT.p.tau_start)
         # delivered capacity: the unit at the logged air state with the analytical ramp
-        st = UNIT.operate(1.0, 1.0, r.T_a[k], r.W[k], HOT.T_o, ramp=ramp, M_c=r.M_coil[k])
-        assert r.unit["Q_coil"][k] == pytest.approx(st.Q_coil, rel=1e-12)
+        st = UNIT.operate(1.0, 1.0, r.T_a[k], r.W[k], HOT.T_o, ramp=ramp, M_c=r.unit.M_coil[k])
+        assert r.unit.op["Q_coil"][k] == pytest.approx(st.Q_coil, rel=1e-12)
         # power: that of the full requested capacity at the same air state
         full = UNIT.operate(1.0, 1.0, r.T_a[k], r.W[k], HOT.T_o)
-        assert r.unit["P_el"][k] == pytest.approx(full.P_el, rel=1e-12)
+        assert r.unit.op["P_el"][k] == pytest.approx(full.P_el, rel=1e-12)
         assert st.Q_coil < full.Q_coil
 
 

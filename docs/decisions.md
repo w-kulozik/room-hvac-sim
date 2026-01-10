@@ -155,6 +155,22 @@ Where a test was changed after it failed, the entry says whether the model or th
 
 ---
 
+## Structure
+
+### D19. Refactor of the simulation interface
+- **Timing:** after the controller work, as a clean-up.
+- **Changes:**
+  - `simulate` takes a `duration` instead of an end time. Passing a duration where the end
+    time was expected caused two test errors.
+  - Everything about the unit (commands, operating point, coil water, electrical energy,
+    drained condensate) moves into one `UnitLog`, instead of six optional fields on
+    `SimResult`.
+  - Actuation (held output, compressor starts, unit evaluation) moves into one class inside
+    `simulate`.
+  - `CoilState` has no fields with defaults added late.
+- **Check:** all tests pass, and every result table and figure is bit-identical before and
+  after.
+
 ## Test changes after failures
 
 | Test | What failed | Wrong side | Resolution |

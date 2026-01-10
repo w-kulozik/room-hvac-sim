@@ -13,14 +13,35 @@ from .plant import (IDX_CO2, IDX_PHI_B, IDX_TA, IDX_TM, IDX_W, Fluxes, stored_co
                     stored_energy, stored_water)
 
 
+# Unit operating-point quantities logged at every grid point
+UNIT_FIELDS = ("Q_sens", "m_lat", "Q_coil", "P_el", "COP", "T_s", "T_out", "m_drain")
+
+
+@dataclass
+class UnitLog:
+    """Record of the air-conditioning unit, present when a unit is simulated."""
+
+    cmd: np.ndarray              # held commands [s, f, V_vent]
+    op: dict[str, np.ndarray]    # operating point, keys UNIT_FIELDS
+    M_coil: np.ndarray           # water held on the coil, kg
+    E_el: np.ndarray             # cumulative electrical energy since t_0, J
+    M_drain: np.ndarray          # cumulative condensate drained since t_0, kg
+
+    def window(self, m: np.ndarray) -> "UnitLog":
+        return UnitLog(cmd=self.cmd[m], op={k: v[m] for k, v in self.op.items()},
+                       M_coil=self.M_coil[m], E_el=self.E_el[m] - self.E_el[m][0],
+                       M_drain=self.M_drain[m] - self.M_drain[m][0])
+
+
 @dataclass
 class SimResult:
     """Time series on the step grid t_0 .. t_N.
 
     u[k], d[k] and the fluxes at row k are the values in force on [t_k, t_k+1)
     (zero-order hold for the control, step-start sample for piecewise-constant inputs).
-    E_in, M_in and CO2_in are the cumulative boundary heat (J), water (kg) and CO2 (m3) since t_0,
-    integrated alongside the state with the same method.
+    The cumulative quantities since t_0 are integrated alongside the state with the same method:
+    boundary heat E_in (J), room water M_in (kg), CO2 (m3), and water from outdoor air and
+    occupants W_ext (kg).
     """
 
     t: np.ndarray
@@ -31,15 +52,11 @@ class SimResult:
     E_in: np.ndarray
     M_in: np.ndarray
     CO2_in: np.ndarray
+    W_ext: np.ndarray
     p: RoomParams
     method: str
     dt: float
-    E_el: np.ndarray | None = None              # cumulative electrical energy of the unit, J
-    cmd: np.ndarray | None = None               # held commands [s, f, V_vent] (with a unit)
-    unit: dict[str, np.ndarray] | None = None   # unit operating point at each grid point
-    M_coil: np.ndarray | None = None            # water held on the coil, kg
-    W_ext: np.ndarray | None = None             # cumulative water from outdoor air and occupants, kg
-    M_drain: np.ndarray | None = None           # cumulative condensate drained, kg
+    unit: UnitLog | None = None
 
     # ---- states and psychrometrics ----------------------------------------------------
     @property
@@ -103,9 +120,10 @@ class SimResult:
     @property
     def system_water_residual(self) -> np.ndarray:
         """Water balance of room air + buffer + coil film: storage change - (in - drained), kg."""
-        M_c = np.zeros_like(self.t) if self.M_coil is None else self.M_coil - self.M_coil[0]
-        drained = np.zeros_like(self.t) if self.M_drain is None else self.M_drain
-        return self.water_stored + M_c - (self.W_ext - drained)
+        if self.unit is None:
+            return self.water_stored - self.W_ext
+        M_c = self.unit.M_coil - self.unit.M_coil[0]
+        return self.water_stored + M_c - (self.W_ext - self.unit.M_drain)
 
     def boundary_heat_flow(self) -> np.ndarray:
         """Net heat into the room at each grid point, W."""
@@ -121,14 +139,9 @@ class SimResult:
             d=Disturbances(*(np.asarray(f)[m] for f in self.d)),
             q={k: v[m] for k, v in self.q.items()},
             E_in=self.E_in[m] - self.E_in[m][0], M_in=self.M_in[m] - self.M_in[m][0],
-            CO2_in=self.CO2_in[m] - self.CO2_in[m][0],
+            CO2_in=self.CO2_in[m] - self.CO2_in[m][0], W_ext=self.W_ext[m] - self.W_ext[m][0],
             p=self.p, method=self.method, dt=self.dt,
-            E_el=None if self.E_el is None else self.E_el[m] - self.E_el[m][0],
-            cmd=None if self.cmd is None else self.cmd[m],
-            unit=None if self.unit is None else {k: v[m] for k, v in self.unit.items()},
-            M_coil=None if self.M_coil is None else self.M_coil[m],
-            W_ext=None if self.W_ext is None else self.W_ext[m] - self.W_ext[m][0],
-            M_drain=None if self.M_drain is None else self.M_drain[m] - self.M_drain[m][0],
+            unit=None if self.unit is None else self.unit.window(m),
         )
 
 

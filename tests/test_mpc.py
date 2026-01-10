@@ -180,9 +180,9 @@ def test_kalman_tracks_the_mass_in_closed_loop(loops):
 
 def test_energy_cost_metric():
     tou = TimeOfUseTariff(offpeak=0.1, peak=0.3)
-    r = simulate(P, ConstantInputs(T_o=30.0), X0, 15 * HOUR, t_start=13 * HOUR,
+    r = simulate(P, ConstantInputs(T_o=30.0), X0, 2 * HOUR, t_start=13 * HOUR,
                  controller=make_pi_controller("sigma-delta", P, UNIT), unit=UNIT)
-    P_el = r.unit["P_el"][:-1]
+    P_el = r.unit.op["P_el"][:-1]
     h = r.t[:-1] / HOUR
     expected = (np.sum(P_el[h < 14]) * 0.1 + np.sum(P_el[h >= 14]) * 0.3) * r.dt / 3.6e6
     assert energy_cost(r, tou) == pytest.approx(expected, rel=1e-12)

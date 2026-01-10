@@ -157,11 +157,13 @@ class CoilState(NamedTuple):
     T_out: float       # supply air, degC
     W_out: float       # supply air, kg/kg
     wet: bool
-    dM_coil: float = 0.0   # rate of change of the water held on the coil, kg/s
-    m_drain: float = 0.0   # condensate leaving through the drain, kg/s
+    dM_coil: float     # rate of change of the water held on the coil, kg/s
+    m_drain: float     # condensate leaving through the drain, kg/s
 
 
-OFF_STATE = CoilState(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, math.nan, math.nan, math.nan, False)
+OFF_STATE = CoilState(Q_sens=0.0, m_lat=0.0, Q_coil=0.0, P_el=0.0, P_fan_in=0.0, COP=0.0,
+                      T_s=math.nan, T_out=math.nan, W_out=math.nan, wet=False,
+                      dM_coil=0.0, m_drain=0.0)
 
 
 @dataclass(frozen=True)

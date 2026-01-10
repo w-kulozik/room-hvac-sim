@@ -80,14 +80,14 @@ def test_occupancy_step_is_not_anticipated():
     """With the step ending exactly at 8:00, no vapour from occupants enters before 8:00."""
     S = SummerScenario()
     x0 = equilibrium_state(26.0, 26.0, float(S.W_o(0.0)))
-    r = simulate(P, S, x0, 8 * HOUR, dt=600.0, t_start=7 * HOUR)
-    r_empty = simulate(P, SummerScenario(n_people=0.0), x0, 8 * HOUR, dt=600.0, t_start=7 * HOUR)
+    r = simulate(P, S, x0, 1 * HOUR, dt=600.0, t_start=7 * HOUR)
+    r_empty = simulate(P, SummerScenario(n_people=0.0), x0, 1 * HOUR, dt=600.0, t_start=7 * HOUR)
     assert np.array_equal(r.x, r_empty.x)
 
 
 def test_logged_fluxes_match_state():
     S = SummerScenario()
-    r = simulate(P, S, equilibrium_state(26.0, 26.0, 0.011), 13 * HOUR, t_start=11 * HOUR)
+    r = simulate(P, S, equilibrium_state(26.0, 26.0, 0.011), 2 * HOUR, t_start=11 * HOUR)
     k = 37
     assert r.q["q_mass_to_air"][k] == pytest.approx(P.H_am * (r.T_m[k] - r.T_a[k]))
     assert r.d.G_sol[k] == pytest.approx(float(S.G_sol(r.t[k])))
