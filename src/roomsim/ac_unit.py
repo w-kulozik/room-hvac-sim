@@ -30,6 +30,13 @@ Refrigeration cycle (Carnot fraction with finite-UA heat exchangers):
 Substituting T_cond gives COP in closed form (no iteration):
     COP = (eta T_evap - a) / (T_o - T_evap + a),   a = Q_coil / UA_cond
 eta is calibrated so that the unit meets its rated EER (fans included) at rating conditions.
+Minimum lift: a real cycle cannot let the condensing temperature fall towards the evaporating
+one. The compressor needs a minimum pressure ratio and the expansion device a minimum pressure
+difference, and head-pressure control (outdoor fan speed) holds them. The cycle therefore keeps
+T_cond - T_evap >= dT_lift_min; when the formula above would go below it (mild outdoor air, low
+load), T_cond = T_evap + dT_lift_min and COP = eta T_evap / dT_lift_min. The two expressions
+meet continuously at the switch. Without this floor the COP exceeded 17 at 20 degC outdoors and
+became negative below about 13 degC.
 
 Frost protection: the controller of a real unit slows the compressor when the evaporating
 temperature would fall below T_evap_min. Here the requested capacity is capped at the value
@@ -129,6 +136,7 @@ class ACParams:
     UA_evap: float = 600.0           # refrigerant <-> coil surface, W/K
     UA_cond: float = 300.0           # refrigerant <-> outdoor air, W/K
     eta_low_speed: float = 0.25      # relative loss of cycle efficiency at s_min vs full speed
+    dT_lift_min: float = 15.0        # minimum condensing - evaporating temperature difference, K
     P_fan_in_nom: float = 25.0       # indoor fan at full speed, W (cubic in speed)
     P_fan_out: float = 40.0          # outdoor fan while the compressor runs, W
     T_evap_min: float = 0.5          # frost protection limit on evaporating temperature, degC
@@ -231,7 +239,15 @@ class ACUnit:
     def _cop(self, eta: float, Q_coil: float, T_s: float, T_o: float) -> float:
         T_ev = T_s - Q_coil / self.p.UA_evap + 273.15
         a = Q_coil / self.p.UA_cond
-        return (eta * T_ev - a) / (T_o + 273.15 - T_ev + a)
+        cop_floor = eta * T_ev / self.p.dT_lift_min          # COP with the minimum lift
+        num, den = eta * T_ev - a, T_o + 273.15 - T_ev + a
+        if num <= 0.0:
+            raise ValueError("condenser too small for this capacity: no positive COP")
+        if den <= 0.0:
+            return cop_floor
+        cop = num / den
+        T_cond = T_o + 273.15 + a * (1.0 + 1.0 / cop)
+        return cop if T_cond - T_ev >= self.p.dT_lift_min else cop_floor
 
     @cached_property
     def eta_full(self) -> float:
@@ -277,7 +293,9 @@ class ACUnit:
         T_out = (h_in - H_FG0 * W_out) / (CP_A + CP_V * W_out)
         m_lat = m * (W_in - W_out)                       # <= 0: water added to the air
         Q_sens = m * (CP_A + CP_V * W_out) * (T_in - T_out)
-        return CoilState(Q_sens, m_lat, 0.0, P_fan_in, P_fan_in, 0.0, T_wb, T_out, W_out,
+        # a wet coil sits at the wet-bulb temperature; a dry one at the return-air temperature
+        T_surface = T_wb if M_c > 0.0 else T_in
+        return CoilState(Q_sens, m_lat, 0.0, P_fan_in, P_fan_in, 0.0, T_surface, T_out, W_out,
                          M_c > 0.0, dM_coil=m_lat, m_drain=0.0)
 
     def operate(self, s: float, f: float, T_in: float, W_in: float, T_o: float,

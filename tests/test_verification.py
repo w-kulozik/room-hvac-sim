@@ -123,7 +123,8 @@ def test_moisture_decay_with_buffer_matches_linearised_solution():
     assert np.abs(r.phi_b - exact[:, 1]).max() < 1e-3 * (x0[IDX_PHI_B] - x_star[1])
     # one fast mode (air <-> buffer) and one slow mode (room <-> outdoors)
     tau = np.sort(-1.0 / np.linalg.eigvals(A).real)
-    assert 300 < tau[0] < 1000
+    # coupled air-buffer mode; the buffer side alone, C_b / (G_b p_ws), would be about 820 s
+    assert 350 < tau[0] < 450
     assert 12_000 < tau[1] < 18_000
     assert tau[1] > 2 * 3600.0 / P.ach     # buffering slows the room down
 

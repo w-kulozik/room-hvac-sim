@@ -48,15 +48,18 @@ def make_pi_controller(kind: str, p: RoomParams, unit: ACUnit, Ts: float = 60.0,
     """PI with low-load handler 'hysteresis' (A) or 'sigma-delta' (C), SIMC-tuned.
 
     The sigma-delta time scale is chosen for an air-temperature ripple of ``ripple_K`` (peak to
-    peak) with the sensible capacity at full speed in typical summer conditions.
+    peak). While cycling the unit runs at s_min with a dry coil, so the relevant capacity is the
+    sensible output per unit of demand at minimum speed, not at full speed (where the coil is wet
+    and part of the capacity is latent): using the latter underestimated the ripple by 1.5 times.
     """
     Kp, Ti = room_pi_tuning(p, unit, Ts)
     guard = CompressorGuard(min_on, min_off)
     if kind == "hysteresis":
         lowload = HysteresisLowLoad(unit.p.s_min, guard)
     elif kind == "sigma-delta":
-        Q_max = unit.operate(1.0, 1.0, 25.0, 0.0115, 32.0).Q_sens
-        T_ref = ripple_T_ref(ripple_K, p.C_a, Q_max, unit.p.s_min)
+        s_min = unit.p.s_min
+        Q_per_demand = unit.operate(s_min, 1.0, 25.0, 0.0115, 32.0).Q_sens / s_min
+        T_ref = ripple_T_ref(ripple_K, p.C_a, Q_per_demand, s_min)
         lowload = SigmaDeltaLowLoad(unit.p.s_min, guard, Ts, T_ref)
     else:
         raise ValueError(f"unknown low-load handler {kind!r}")

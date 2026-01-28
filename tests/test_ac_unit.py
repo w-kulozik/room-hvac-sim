@@ -153,3 +153,19 @@ def test_start_ramp_reduces_capacity_not_power():
     assert half.P_el == pytest.approx(full.P_el)
     assert U.start_ramp(0.0) == 0.0
     assert U.start_ramp(R.tau_start) == pytest.approx(1 - math.exp(-1))
+
+
+def test_cop_is_bounded_by_the_minimum_lift_and_continuous():
+    """The cycle never lets the condensing temperature approach the evaporating one."""
+    for T_o in np.linspace(0.0, 45.0, 46):
+        for s in (0.3, 0.6, 1.0):
+            for f in (0.4, 1.0):
+                st = U.operate(s, f, 25.0, 0.0115, T_o)
+                T_ev = st.T_s - st.Q_coil / R.UA_evap + 273.15
+                cop_max = U.eta_full * U.eta_rel(s) * T_ev / R.dT_lift_min
+                assert 0.0 < st.COP <= cop_max * (1 + 1e-12)
+                assert st.P_el > U.p.P_fan_in_nom * f ** 3 + U.p.P_fan_out
+    # no jump where the floor takes over
+    T_o = np.linspace(15.0, 35.0, 2001)
+    cop = np.array([U.operate(0.3, 1.0, 25.0, 0.0115, t).COP for t in T_o])
+    assert np.abs(np.diff(cop)).max() < 0.01

@@ -38,7 +38,7 @@ Room 5 × 4 × 2.7 m, two occupants 8-18 h (70 W, 0.05 kg/h each), 3 m² window 
 sinusoidal summer day 20-32 °C. Full specification, including where and why it departs from
 its first version: [docs/specification.md](docs/specification.md).
 
-Time scales: air ≈ 1 700 s, mass ≈ 3.1 days, air-buffer moisture exchange ≈ 900 s,
+Time scales: air ≈ 1 700 s, mass ≈ 3.1 days, air-buffer moisture exchange ≈ 400 s,
 apparent room moisture ≈ 15 000 s (twice the 7 200 s of the air alone).
 
 ### Air-conditioning unit
@@ -52,7 +52,7 @@ into Q_hvac_sens and ṁ_hvac_lat at every Runge-Kutta stage.
 | Coil | bypass factor / apparatus dew point, BF = 0.15 at 450 m³/h, NTU ∝ ṁ^-0.4 |
 | Dry / wet coil | closed form when dry; Newton on the saturation enthalpy when wet; continuous at the switch |
 | Sensible / latent split | exact for the enthalpy definition: Q_sens + Q_lat = ṁ Δh to round-off |
-| Cycle | Carnot fraction with finite-UA evaporator and condenser, closed form, calibrated to the rated EER |
+| Cycle | Carnot fraction with finite-UA evaporator and condenser, closed form, calibrated to the rated EER; condensing temperature at least 15 K above evaporating (head-pressure control) |
 | Frost protection | capacity capped so the evaporating temperature stays ≥ 0.5 °C |
 | Start-up | capacity ramps with a 60 s time constant while the compressor draws full power |
 | Coil water | condensate wets the coil (0.25 kg) before it drains; re-evaporates with the fan on and the compressor off |
@@ -81,17 +81,17 @@ occupied hours (mean CO2 950 ppm):
 |---|---|---|---|---|---|
 | On/off thermostat (±0.5 K, full speed) | 11.38 | 174 | 0.35 | 49.2 | 0.0 |
 | On/off, fan continuous | 9.92 | 117 | 0.40 | 64.1 | 26.2 |
-| PI + hysteresis low-load handling (A) | 6.11 | 66 | 0.25 | 64.1 | 28.4 |
-| PI + sigma-delta low-load handling (C) | 6.21 | 123 | 0.22 | 63.7 | 27.4 |
-| PI (C), fan continuous | 7.21 | 126 | 0.22 | 63.7 | 27.4 |
+| PI + hysteresis low-load handling (A) | 6.53 | 66 | 0.25 | 64.1 | 28.4 |
+| PI + sigma-delta low-load handling (C) | 6.85 | 169 | 0.19 | 63.7 | 27.6 |
+| PI (C), fan continuous | 7.89 | 177 | 0.18 | 63.7 | 27.6 |
 
 ![Controller metrics](figures/controllers_metrics.png)
 
-**The PI halves the energy but loses humidity control.** The unit is large for this office, as
-is common in practice, so the PI keeps it at minimum speed most of the time. At s = 0.3 and full
-fan the coil surface sits near 19 °C, above the dew point of the room air (about 16 °C): the coil
-runs dry and removes no water at all (sensible heat ratio 1.00 against 0.80 for on/off). The
-mean EER rises from 2.6 to 4.5, but indoor RH climbs to 64 %. Recovering dehumidification at part
+**The PI uses 40 % less energy but loses humidity control.** The unit is large for this office,
+as is common in practice, so the PI keeps it at minimum speed most of the time. At s = 0.3 and
+full fan the coil surface sits at 18.4-19.1 °C, above the dew point of the room air (17.6 °C at
+25 °C and 64 % RH): the coil runs dry and removes no water at all (sensible heat ratio 1.00
+against 0.80 for on/off). The mean EER rises from 2.6 to 3.9, but indoor RH climbs to 64 %. Recovering dehumidification at part
 load is the subject of the next section.
 
 **Leaving the fan on between cycles returns the condensate to the room.** With the on/off
@@ -105,10 +105,12 @@ a continuous demand and a separate handler turns it into feasible commands, with
 stop times of 3 min. Handler A (thermostatic hysteresis, integrator frozen) is what many units
 do; handler C (sigma-delta) meets the mean demand, so the PI keeps integrating. The sigma-delta
 time scale follows from the ripple it causes: between switches the energy mismatch is stored in
-the air, so the peak-to-peak ripple is s_min T_ref Q_max / C_a, and T_ref = 320 s gives 0.5 K.
+the air, so the peak-to-peak ripple is s_min T_ref Q_d / C_a, with Q_d the sensible cooling per
+unit of demand at minimum speed (dry coil); T_ref = 210 s gives 0.5 K. Measured over 100
+low-load cycles in closed loop: median 0.50 K.
 Its accumulator is clamped so that a deficit held back by the minimum run or stop time is not
 paid back later, which had kept the unit off while the room was already warm. Handler C ends up
-with the tightest temperature control and more, but shorter, cycles than A (3.3 starts per
+with the tightest temperature control and more, but shorter, cycles than A (4.5 starts per
 running hour against 11 for on/off).
 
 ### Humidity-aware fan control
@@ -126,18 +128,18 @@ Set points 25 °C and 55 % RH:
 
 | Controller | Energy (kWh) | Water removed (kg) | RH mean occ. (%) | RH std occ. (%) | h RH > 60 % occ. |
 |---|---|---|---|---|---|
-| PI (C), full fan | 6.21 | 0.0 | 63.7 | 2.07 | 27.4 |
-| H1 fan RH-PI | 7.27 | 5.2 | 55.3 | 0.81 | 0.0 |
-| H2 cascade | 7.28 | 5.2 | 55.2 | 0.50 | 0.0 |
+| PI (C), full fan | 6.85 | 0.0 | 63.7 | 1.95 | 27.6 |
+| H1 fan RH-PI | 7.56 | 5.1 | 55.3 | 0.81 | 0.0 |
+| H2 cascade | 7.55 | 5.1 | 55.2 | 0.55 | 0.0 |
 | On/off (reference) | 11.38 | 8.6 | 49.2 | 1.54 | 0.0 |
 
 ![Humidity control](figures/humidity_control.png)
 
-Both bring the humidity back to its set point for 17 % more energy than the plain PI, still 36 %
+Both bring the humidity back to its set point for 10 % more energy than the plain PI, still 34 %
 less than on/off. The two structures have the same mean performance; the cascade holds humidity
-more steadily and moves the fan about a third less. Keeping the controllers tuned for the nominal
+more steadily and moves the fan somewhat less. Keeping the controllers tuned for the nominal
 unit and running them on a different one (dirty coil with bypass factor 0.30, or a 3.5 kW unit)
-gives the same ordering: RH standard deviation 0.48-0.64 % for the cascade against 0.81-0.97 %
+gives the same ordering: RH standard deviation 0.49-0.59 % for the cascade against 0.81-0.96 %
 for H1. The advantage is real but small, as expected when the outer process (room humidity) is
 much slower than anything the inner loop rejects.
 
@@ -163,7 +165,7 @@ cooling directly, with the low-load handler turning it into cycling between the 
 solves, left the cycling without feedback and produced 3.75 K·h outside the band over three days.
 In the final structure the plan sets the PI's set point, and the PI (60 s) does the tracking and
 the cycling. The planner keeps 0.6 K inside the occupied band for the PI's ripple; the margin
-was chosen from a sweep (0.3 K: 0.46 K·h outside the band, 0.6 K: 0.01 K·h, for 4 % more energy).
+was chosen from a sweep (0.3 K: 0.38 K·h outside the band, 0.6 K: 0.01 K·h, for 4 % more energy).
 
 ![MPC over one day](figures/mpc_day.png)
 
@@ -171,30 +173,35 @@ Three days, ventilation during occupied hours, tariff 0.15 / 0.60 EUR/kWh with t
 
 | Controller | Energy (kWh) | Cost (EUR) | K·h outside band | Starts |
 |---|---|---|---|---|
-| PI, 25 °C constant | 6.21 | 2.15 | 0.000 | 123 |
-| PI, set-back, fixed start 6:00 | 5.62 | 1.91 | 0.000 | 39 |
-| MPC | 5.45 | 1.95 | 0.009 | 61 |
-| MPC, time-of-use tariff | 6.37 | **1.72** | 0.000 | 89 |
-| MPC, model parameters off by 20 % | 5.46 | 1.94 | 0.001 | 64 |
-| MPC, forecast +2 K and -30 % sun | 5.44 | 1.95 | 0.010 | 60 |
+| PI, 25 °C constant | 6.85 | 2.26 | 0.000 | 169 |
+| PI, set-back, fixed start 6:00 | 5.96 | 1.96 | 0.000 | 51 |
+| MPC | 5.80 | 2.02 | 0.009 | 79 |
+| MPC, time-of-use tariff | 6.39 | 1.97 | 0.000 | 150 |
+| MPC, model parameters off by 20 % | 5.85 | 2.01 | 0.000 | 94 |
+| MPC, forecast +2 K and -30 % sun | 5.80 | 2.02 | 0.008 | 77 |
 
 - **Against a well-configured PI the energy saving is small**: 3 % against set-back with a fixed
-  early start, 12 % against a constant set point. Most of what the MPC finds (let the room float
+  early start, 15 % against a constant set point. Most of what the MPC finds (let the room float
   at night, start just in time, sit at the warm edge of the band) a PI with a good schedule
   already gets.
-- **With a time-of-use tariff the MPC cuts the cost by 10 %** while using 13 % more energy: it
-  cools the room down to 20 °C overnight, stores the cold in the thermal mass, and runs at lower
-  power through the day and the peak. A PI has no way to do this.
+- **A time-of-use tariff does not pay off here.** With the tariff the MPC pre-cools overnight,
+  storing cold in the thermal mass, and lowers its own cost by 2.5 %, but ends level with the
+  set-back PI (1.97 against 1.96 EUR) while using 7 % more energy. An earlier version reported a
+  10 % saving; the final audit traced it to an unbounded cycle COP at night (above 17 at
+  20 °C outdoors), which made night-time cooling look almost free. With a minimum condensing lift
+  the advantage disappears (decision D20).
 - **Load shifting has a threshold.** Planning studies with different price ratios show no
   shifting below a peak/off-peak ratio of about 3; above it, at most 15-23 % of the cooling in the
   peak window moves out of it, depending on the width of the band. Pre-cooling the air pulls heat
   out of the strongly coupled mass (180 W/K) and much of it leaks back before the peak.
 - **Robustness**: 20 % errors in five model parameters, or a forecast 2 K too warm with 30 % less
-  sun, change energy and comfort by less than 1 %. The Kalman disturbance state absorbs both.
+  sun, change the energy by less than 1 % and keep the comfort criterion. The Kalman disturbance state absorbs both.
 
 ## Verification
 
-All checks run in `pytest` (138 tests, about a minute and a half).
+All checks run in `pytest` (140 tests, about a minute and a half). The code was also audited
+from scratch, without the development history; its findings and fixes are
+in [docs/decisions.md](docs/decisions.md) (D20-D22).
 
 | Check | Result |
 |---|---|
@@ -212,6 +219,8 @@ All checks run in `pytest` (138 tests, about a minute and a half).
 | Room + coil water balance in closed loop (drain integrated) | round-off |
 | Unit inside the integrator, closed-loop convergence order | **3.9** |
 | PI anti-windup: integrator under saturation vs analytical value | 10⁻⁹ |
+| Cycle COP over 0-45 °C, all speeds and fans: positive, bounded by the minimum lift, continuous | always |
+| Sigma-delta ripple in closed loop vs design (0.5 K) | median within 10 % |
 | Sigma-delta: mean delivered demand, cycle length vs design formula | ±0.01, ±10 % |
 | Cascade inner loop on the real coil: coil temperature vs its set point | ±0.05 K |
 | Control model: exact discretisation; fixed point = continuous steady state | 10⁻¹² |

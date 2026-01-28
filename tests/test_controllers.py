@@ -8,7 +8,7 @@ from roomsim.controllers import (CompressorGuard, DiscretePI, HysteresisLowLoad,
                                  OnOffThermostat, SigmaDeltaLowLoad, VentilationSchedule,
                                  fan_command, make_pi_controller, room_pi_tuning, simc_pi)
 from roomsim.inputs import DAY, HOUR, ConstantInputs, SummerScenario
-from roomsim.metrics import compute
+from roomsim.metrics import compute, low_load_ripples
 from roomsim.params import RoomParams
 from roomsim.plant import equilibrium_state
 from roomsim.simulate import IDX_CMD_FAN, IDX_CMD_S, IDX_CMD_VENT, simulate
@@ -119,7 +119,8 @@ def test_sigma_delta_meets_the_average_demand(v):
     Ts = 60.0
     sd = SigmaDeltaLowLoad(S_MIN, CompressorGuard(180.0, 180.0), Ts, T_ref=600.0)
     s = np.array([sd.step(k * Ts, v, 25.0, 25.0)[0] for k in range(int(24 * HOUR / Ts))])
-    assert s.mean() == pytest.approx(v, abs=0.01)
+    # the mean is met up to one threshold of accumulated error over the day
+    assert s.mean() == pytest.approx(v, abs=0.003)
     assert set(np.unique(s)) <= {0.0, S_MIN}
 
 
@@ -175,6 +176,13 @@ def test_pi_tracks_better_and_starts_less_than_on_off(loops):
     assert m["pi_C"].starts < m["onoff"].starts
     assert m["pi_C"].starts_per_h_on < 0.5 * m["onoff"].starts_per_h_on   # gentler on the compressor
     assert m["pi_A"].energy_kWh < m["onoff"].energy_kWh
+
+
+def test_sigma_delta_ripple_matches_its_design(loops):
+    """The low-load cycles of the PI (C) loop have the air-temperature ripple they were designed for."""
+    ripples = low_load_ripples(loops["pi_C"], S_MIN)
+    assert len(ripples) > 20
+    assert np.median(ripples) == pytest.approx(0.5, rel=0.1)
 
 
 def test_commands_are_feasible(loops):

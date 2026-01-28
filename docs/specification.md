@@ -81,7 +81,7 @@ state of that stage.
 | Outlet | brought to saturation at constant enthalpy if the mixing line would cross it |
 | Capacity | 2.5 kW at 35 °C outdoor, −1 %/K above |
 | Frost protection | capacity capped so that the evaporating temperature stays ≥ 0.5 °C |
-| Cycle | COP = η(s) T_evap/(T_cond − T_evap), T_evap = T_s − Q/UA_evap, T_cond = T_o + Q_cond/UA_cond, closed form; η calibrated to EER 3.5 (fans included) at 35 °C / 27 °C / W = 0.0114 |
+| Cycle | COP = η(s) T_evap/(T_cond − T_evap), T_evap = T_s − Q/UA_evap, T_cond = max(T_o + Q_cond/UA_cond, T_evap + 15 K), closed form; η calibrated to EER 3.5 (fans included) at 35 °C / 27 °C / W = 0.0114 |
 | Start-up | delivered capacity × (1 − e^(−t_on/60 s)) (40-90 s measured on small units); compressor power that of the full capacity |
 
 At rating conditions: SHR 0.73, coil surface 13 °C, supply 15 °C. Lower fan speed gives a colder
@@ -131,7 +131,7 @@ simulated period, so the result depends on the initial state. The reported run i
 warm-up days (discarded) until the daily cycle is periodic.
 
 **Time scales:** τ_air ≈ 1 700 s; τ_mass ≈ 3.1 days; air moisture alone 3 600/n = 7 200 s;
-air-buffer exchange ≈ 900 s; apparent moisture time constant with buffering ≈ 15 000 s.
+air-buffer exchange ≈ 400 s (coupled mode); apparent moisture time constant with buffering ≈ 15 000 s.
 The system is stiff. RK4 with 60 s is accurate; explicit Euler is stable for steps below
 2/|λ_max|, checked numerically from the Jacobian. **[rev]** The fastest mode is the air-buffer
 moisture exchange, not the air temperature, and it stiffens with temperature because the

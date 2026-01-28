@@ -155,6 +155,55 @@ Where a test was changed after it failed, the entry says whether the model or th
 
 ---
 
+## Findings of the final audit
+
+A reviewer with no access to the development history read the code and docs and tried to break
+them. It confirmed two defects and three inaccuracies. The fixes follow.
+
+### D20. Minimum condensing lift in the cycle model
+- **Timing:** after observation; found in the final audit.
+- **Defect:** COP = (η T_ev − a)/(T_o − T_ev + a) had no floor on T_cond − T_ev. At minimum speed
+  the COP reached 17.9 at 20 °C outdoors, 77 at 15 °C, and went negative below about 13 °C.
+  36 % of the PI's running time in the summer scenario was at COP > 8.
+- **Fix:** T_cond ≥ T_ev + 15 K, which represents head-pressure control holding the compressor's
+  minimum pressure ratio and the expansion device's minimum pressure difference. Over 0-45 °C outdoors,
+  all speeds and fan settings, COP now stays within 2.5-9.3 and is continuous where the floor
+  takes over.
+- **Effect on results:**
+
+  | Result | Before | After |
+  |---|---|---|
+  | PI energy | 6.21 kWh | 6.85 kWh |
+  | PI saving vs on/off | 45 % | 40 % |
+  | MPC saving vs set-back PI | 3.0 % | 2.7 % |
+  | Time-of-use MPC vs set-back PI, cost | −10 % | **+0.5 %** |
+
+  The tariff conclusion was reversed: night pre-cooling only looked profitable because
+  night-time cooling was nearly free in the defective model.
+- **Uncertainty:** the 15 K value is a parameter (`ACParams.dT_lift_min`). Absolute part-load
+  energies depend on it.
+
+### D21. Sigma-delta ripple design used the wrong capacity
+- **Timing:** after observation; found in the final audit.
+- **Defect:** T_ref was computed with the sensible capacity at full speed (wet coil, 1 685 W).
+  While cycling, the unit runs at minimum speed with a dry coil and delivers 1.5 times more
+  sensible cooling per unit of demand. The measured ripple was therefore 0.74 K instead of the
+  0.5 K claimed.
+- **Fix:** use the sensible output per unit of demand at minimum speed; T_ref = 210 s.
+- **Checks:**
+  - Measured median ripple over about 100 low-load cycles: 0.50 K. A test now checks this.
+  - The MPC margin sweep was repeated: 0.6 K still matches the PI's comfort (0.009 K·h).
+
+### D22. Documentation and test corrections
+- The coupled air-buffer moisture mode is about 400 s, not 900 s (≈ 820 s is the buffer side
+  alone). The test bound was tightened from 300-1000 s to 350-450 s.
+- The room dew point under PI control is 17.6 °C, not about 16 °C. The coil at minimum speed
+  (18.4-19.1 °C) is still dry, but with a margin of only about 1 K at night.
+- The sigma-delta mean-demand test tolerance went from 0.01 to 0.003. Measured errors are
+  ≤ 0.0017; at v = 0.05 the old tolerance allowed 20 %.
+- The evaporator thermistor in fan-only mode now reads the wet-bulb temperature only if the coil
+  is wet, and the return-air temperature if it is dry.
+
 ## Structure
 
 ### D19. Refactor of the simulation interface
@@ -204,6 +253,13 @@ stated basis:
 | MPC saving | > 5 % | strict ordering; the size is reported, not asserted |
 
 ## Known limitations
+
+- Water held on the coil neither evaporates nor drains while the compressor runs with a dry coil
+  (surface above the dew point). Physically the film would evaporate. Under PI control the coil
+  is dry and receives no condensate, so the film is usually empty. Under on/off control the coil
+  runs wet. The effect on reported numbers is expected to be small but has not been quantified.
+- The MPC's Kalman filter estimates the last sample's cooling with full fan speed, no start-up
+  ramp and the forecast outdoor temperature. The disturbance state absorbs the difference.
 
 - Single zone, well-mixed air; no radiant temperature or operative-temperature comfort.
 - The MPC's model has no humidity, so it cannot trade sensible against latent load.
