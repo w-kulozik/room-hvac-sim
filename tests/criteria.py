@@ -22,3 +22,8 @@ ROBUST_ENERGY_REL = 0.05
 # A humidity difference counts as physically meaningful above 1 %RH, which at 25 degC is a
 # humidity-ratio difference of about 2e-4 kg/kg.
 RH_RESOLUTION_W = 2e-4
+
+# Indoor air quality (decision D24, fixed before the ventilation runs): CO2 at or below 1000 ppm
+# while occupied, allowing at most 6 minutes above it per occupied day (a start-of-day transient).
+CO2_LIMIT = 1000.0
+CO2_EXCEEDANCE_H_PER_DAY = 0.1
