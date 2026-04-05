@@ -155,6 +155,55 @@ Where a test was changed after it failed, the entry says whether the model or th
 
 ---
 
+## Ventilation
+
+Everything in D23-D26 was written down before any ventilation run, as a guard against tuning
+to the answer. Changes made after seeing results are added as separate entries.
+
+### D23. Ventilation fan power
+- **Timing:** a priori.
+- **Problem:** until now ventilation was free, which would favour any strategy that ventilates
+  more.
+- **Model:** fan affinity law around a design point. P = P_d (V / V_d)³, with V_d = 0.03 m³/s
+  (108 m³/h) and P_d = 30 W, i.e. a specific fan power of 1 000 W/(m³/s) at design flow, typical
+  of a small ventilation unit.
+- **Computation:** ventilation flow is held between controller samples, so fan energy is the
+  exact sum of P(V_k) dt.
+- **Not modelled:** heat recovery (in summer it would mostly be bypassed).
+
+### D24. Requirement and minimum flows
+- **Timing:** a priori.
+- **Requirement:** CO2 at or below 1 000 ppm during occupied hours. Reported as occupied hours
+  above 1 000 ppm and the occupied maximum.
+- **Minimum flow when occupied:** the building component of ASHRAE 62.1 for offices,
+  0.3 L/(s·m²) × 20 m² = 0.006 m³/s, to remove pollutants that do not scale with occupancy.
+- **Unoccupied:** no flow, except when a strategy ventilates for cooling (D26).
+- **Context:** the existing fixed schedule (0.0105 m³/s while occupied) is close to the full
+  62.1 rate for two people (2 × 2.5 L/s + 6 L/s = 0.011 m³/s).
+
+### D25. Strategies compared
+- **Timing:** a priori. All strategies use the same temperature and humidity control
+  (PI + sigma-delta with the H2 cascade on the fan), so differences come from ventilation alone.
+- **V0, fixed schedule:** 0.0105 m³/s from 8 to 18 h.
+- **V1, demand-controlled, continuous:**
+  - PI on measured CO2, set point 900 ppm (100 ppm of headroom below the requirement).
+  - Output between the occupied minimum and 0.03 m³/s, with back-calculation anti-windup.
+- **V2, demand-controlled, staged:** three fan levels (0.006, 0.012 and 0.024 m³/s), switched
+  up at 850 / 950 ppm and down at 750 / 850 ppm, with a 5-minute minimum dwell time on each
+  level. This represents the generic form of staged demand-controlled ventilation.
+- **V3, V1 plus night flush:**
+  - Mechanical ventilation at 0.03 m³/s when unoccupied, outdoor air at least 2 K cooler than
+    the room, and the room above 22 °C.
+  - It tests whether the free cooling saves more compressor energy than the fan uses.
+
+### D26. Tuning of the CO2 PI (V1)
+- **Timing:** a priori.
+- **Process:** dC/dt = (V_inf + V)(C_o − C)/V_room + N G/V_room. Linearised at 900 ppm with
+  two people, the gain is ∂C/∂V = −(C − C_o)/(V_inf + V) ≈ −480 ppm / 0.0175 m³/s, and the time
+  constant is V_room/(V_inf + V) ≈ 3 100 s.
+- **Tuning:** SIMC with τ_c = 900 s, as for the temperature loop. The integral time is
+  min(τ, 4(τ_c + θ)) = 3 100 s.
+
 ## Findings of the final audit
 
 A reviewer with no access to the development history read the code and docs and tried to break
