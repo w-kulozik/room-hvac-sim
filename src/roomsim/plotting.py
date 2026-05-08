@@ -282,3 +282,33 @@ def plot_mpc_day(results: dict, comfort, tariff, path) -> None:
     axP.set_xticklabels([f"{h:02d}:00" for h in range(0, 25, 3)])
     fig.savefig(path)
     plt.close(fig)
+
+
+def plot_ventilation_day(results: dict, co2_limit: float, path) -> None:
+    """One day per strategy: CO2 (top) and ventilation flow (bottom)."""
+    from .plant import IDX_V_VENT
+    n = len(results)
+    fig = plt.figure(figsize=(9, 2.25 * n + 0.4))
+    subfigs = fig.subfigures(n, 1, hspace=0.02)
+    for i, (sf, (name, r), color) in enumerate(zip(subfigs, results.items(), SERIES)):
+        axC, axV = sf.subplots(2, 1, sharex=True, gridspec_kw=dict(height_ratios=[3, 1], hspace=0.12))
+        th = (r.t - r.t[0]) / HOUR
+        for ax in (axC, axV):
+            _shade_occupancy(ax, r, th, label=False)
+            ax.set_axisbelow(True)
+        axC.axhline(co2_limit, color=MUTED, lw=0.8)
+        axC.plot(th, r.CO2, color=color, lw=1.4)
+        axC.set_ylim(400, 1300)
+        axC.set_ylabel("CO$_2$ (ppm)")
+        axC.set_title(name, loc="left", fontsize=10, pad=4)
+        axV.step(th, 3600 * r.u[:, IDX_V_VENT], where="post", color=color, lw=1.1)
+        axV.set_ylim(-5, 115)
+        axV.set_yticks([0, 50, 100])
+        axV.set_ylabel("m$^3$/h")
+        axV.set_xlim(0, 24)
+        axV.set_xticks(np.arange(0, 25, 3))
+        axV.set_xticklabels([f"{h:02d}:00" for h in range(0, 25, 3)] if i == n - 1 else [])
+    fig.suptitle(f"CO$_2$ and ventilation flow over one day (line: {co2_limit:.0f} ppm; grey: occupied)",
+                 x=0.06, y=1.0, ha="left", va="bottom", fontsize=11, fontweight="semibold")
+    fig.savefig(path)
+    plt.close(fig)

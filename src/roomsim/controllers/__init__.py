@@ -7,10 +7,13 @@ from .mpc import ComfortSchedule, EconomicMPC
 from .pi import DiscretePI, room_pi_tuning, simc_pi
 from .pi_unit import PIUnitController, make_pi_controller
 from .thermostat import OnOffThermostat
+from .ventilation import (DemandControlledPI, NightFlush, ScheduledVentilation,
+                          StagedVentilation, WithVentilation, dcv_tuning)
 
 __all__ = [
     "CompressorGuard", "NO_VENTILATION", "VentilationSchedule", "fan_command",
     "HysteresisLowLoad", "SigmaDeltaLowLoad", "DiscretePI", "room_pi_tuning", "simc_pi",
     "PIUnitController", "make_pi_controller", "OnOffThermostat", "FanHumidityPI", "CoilCascade",
-    "ComfortSchedule", "EconomicMPC",
+    "ComfortSchedule", "EconomicMPC", "DemandControlledPI", "NightFlush", "ScheduledVentilation",
+    "StagedVentilation", "WithVentilation", "dcv_tuning",
 ]

@@ -199,10 +199,38 @@ to the answer. Changes made after seeing results are added as separate entries.
 ### D26. Tuning of the CO2 PI (V1)
 - **Timing:** a priori.
 - **Process:** dC/dt = (V_inf + V)(C_o − C)/V_room + N G/V_room. Linearised at 900 ppm with
-  two people, the gain is ∂C/∂V = −(C − C_o)/(V_inf + V) ≈ −480 ppm / 0.0175 m³/s, and the time
-  constant is V_room/(V_inf + V) ≈ 3 100 s.
-- **Tuning:** SIMC with τ_c = 900 s, as for the temperature loop. The integral time is
-  min(τ, 4(τ_c + θ)) = 3 100 s.
+  two people, the gain is ∂C/∂V = −(C − C_o)/(V_inf + V) and the time constant is
+  V_room/(V_inf + V).
+- **Tuning:** SIMC with τ_c = 900 s, as for the temperature loop, computed from the parameters
+  (`dcv_tuning`).
+- **Arithmetic correction, made before any run:** the first version of this entry used
+  V_inf + V ≈ 0.0175 m³/s. The steady state at 900 ppm requires N G / (C − C_o) = 0.0217 m³/s,
+  so τ ≈ 2 500 s and ∂C/∂V ≈ −22 000 ppm per m³/s.
+
+### D27. Variable-occupancy scenario
+- **Timing:** after observation. Written before running the new scenario; the strategies and
+  their parameters stay as fixed in D25.
+- **Observation:** with constant occupancy (two people, 8-18 h), demand-controlled ventilation
+  used more air and energy than the fixed schedule. There is no variation for it to exploit,
+  and its 900 ppm set point is stricter than where the fixed schedule ends up (≈ 1 000 ppm).
+  This is a property of the scenario, not of the strategies.
+- **Addition:** an office day with variable occupancy:
+
+  | Hours | People |
+  |---|---|
+  | 8-9 | 1 |
+  | 9-12 | 2 |
+  | 12-13 | 0 (lunch) |
+  | 13-15 | 2 |
+  | 15-16 | 3 (meeting) |
+  | 16-18 | 1 |
+
+  Mean occupancy is 1.6 people, below the design value of 2, with a peak of 3.
+- **Expectation stated beforehand:** the fixed schedule, sized for two people, exceeds 1 000 ppm
+  during the meeting. Demand control meets the requirement with less air on average.
+- **Exploratory, labelled as such:** a sensitivity of the night flush to its flow
+  (0.01-0.03 m³/s), because fan power scales with the cube of the flow. V3 itself stays as
+  defined.
 
 ## Findings of the final audit
 
