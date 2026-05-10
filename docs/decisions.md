@@ -232,6 +232,18 @@ to the answer. Changes made after seeing results are added as separate entries.
   (0.01-0.03 m³/s), because fan power scales with the cube of the flow. V3 itself stays as
   defined.
 
+### D28. Ventilation results against the expectations
+- **Timing:** after the runs. This entry only records outcomes; no parameter was changed.
+- **D27 expectation:** the fixed schedule exceeds 1 000 ppm during the meeting, and demand
+  control meets the requirement with less air on average. Partly met:
+  - the fixed schedule exceeded the limit for 3.9 h (peak 1 189 ppm), and demand control met
+    the requirement;
+  - "less air" holds only against a fixed flow sized for the peak (1 176 against 2 095 m³).
+    Against the 2-person fixed flow, demand control used 4 % more air.
+- **Unexpected:** night flush at the design flow costs more fan energy than it saves. It pays at
+  roughly half that flow (exploratory sweep). V3 was not redefined; the sweep is reported
+  separately.
+
 ## Findings of the final audit
 
 A reviewer with no access to the development history read the code and docs and tried to break

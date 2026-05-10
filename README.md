@@ -197,9 +197,50 @@ Three days, ventilation during occupied hours, tariff 0.15 / 0.60 EUR/kWh with t
 - **Robustness**: 20 % errors in five model parameters, or a forecast 2 K too warm with 30 % less
   sun, change the energy by less than 1 % and keep the comfort criterion. The Kalman disturbance state absorbs both.
 
+### Ventilation
+
+Ventilation strategies, all with the same temperature and humidity control (PI with sigma-delta
+handling and the coil cascade), so differences come from ventilation only. The fan follows the
+affinity law (30 W at 108 m³/h). The requirement is CO₂ ≤ 1 000 ppm while occupied. Strategies,
+parameters, requirement and expected outcomes were committed before the runs
+([decisions D23-D27](docs/decisions.md)).
+
+- **V0:** fixed schedule, 38 m³/h, close to the ASHRAE 62.1 rate for two people.
+- **V1:** PI on measured CO₂, set point 900 ppm, SIMC-tuned from the CO₂ balance.
+- **V2:** three fan levels switched on CO₂ with hysteresis and a 5-minute dwell. This is the
+  generic form of staged demand-controlled ventilation.
+- **V3:** V1 plus mechanical night flush when the outdoor air is at least 2 K cooler.
+
+Variable office day (late arrival, empty at lunch, a 3-person meeting at 15 h, early leave):
+
+| Strategy | Total energy (kWh) | Air (m³) | CO₂ max occ. (ppm) | h > 1 000 ppm |
+|---|---|---|---|---|
+| V0 fixed schedule (sized for 2 people) | 7.34 | 1134 | 1189 | 3.9 |
+| V0 sized for the 3-person peak (exploratory) | 7.96 | 2095 | 966 | 0.0 |
+| V1 demand-controlled PI | 7.40 | 1176 | 949 | 0.0 |
+| V2 staged levels | 7.42 | 1180 | 955 | 0.0 |
+| V3 V1 + night flush at 108 m³/h | 7.45 | 3736 | 949 | 0.0 |
+
+![Ventilation over one day](figures/ventilation_day.png)
+
+- **Demand control earns its keep only when occupancy varies.**
+  - With two people present all day, V1 and V2 used more air than the fixed schedule (1 438
+    against 1 134 m³). There was nothing to exploit, and their 900 ppm set point is stricter
+    than where the fixed flow ends up (≈ 1 000 ppm).
+  - With variable occupancy, the fixed flow breaks the requirement during and after the
+    meeting.
+  - A fixed flow sized for the peak meets it, but with 78 % more air and 8 % more energy than
+    demand control.
+- **Staged levels perform like the continuous PI** (energy within 0.3 %, peak CO₂ within 6 ppm).
+  Three levels are enough here; the continuous loop adds nothing measurable.
+- **Night flush pays only at reduced flow.** At the full 108 m³/h it saves 0.66 kWh of
+  compressor energy but the fan uses 0.71 kWh. An exploratory sweep of the flush flow (design
+  case) gives the lowest total at 54-72 m³/h: 3.6 % below V1, because fan power falls with the
+  cube of the flow while the free cooling falls roughly linearly.
+
 ## Verification
 
-All checks run in `pytest` (140 tests, about a minute and a half). The code was also audited
+All checks run in `pytest` (151 tests, about a minute and a half). The code was also audited
 from scratch, without the development history; its findings and fixes are
 in [docs/decisions.md](docs/decisions.md) (D20-D22).
 
@@ -267,12 +308,15 @@ src/roomsim/
   control_model.py linear RC model for the controllers, exact discretisation
   estimation.py    Kalman filter with a disturbance state (offset-free)
   tariff.py        time-of-use electricity price
+  ventilation.py   ventilation fan power (affinity law)
   controllers/     on/off thermostat, discrete PI with anti-windup, low-load handlers,
-                   humidity-aware fan control (direct and cascade), economic MPC
+                   humidity-aware fan control (direct and cascade), economic MPC,
+                   ventilation strategies (scheduled, CO2 PI, staged, night flush)
 scripts/run_baseline.py         free-floating baseline and verification figures
 scripts/compare_controllers.py  controller comparison table and figures
 scripts/compare_humidity.py     humidity-aware fan control and robustness to the unit
 scripts/compare_mpc.py          MPC against PI, tariff and robustness cases
+scripts/compare_ventilation.py  ventilation strategies, two occupancy scenarios
 tests/
 docs/specification.md
 ```
@@ -286,9 +330,10 @@ python scripts/run_baseline.py
 python scripts/compare_controllers.py
 python scripts/compare_humidity.py
 python scripts/compare_mpc.py
+python scripts/compare_ventilation.py
 ```
 
 ## Roadmap
 
-1. Ventilation-level strategies driven by CO2.
-2. MPC with humidity in the model, so that the planner can trade sensible against latent load.
+1. MPC with humidity in the model, so that the planner can trade sensible against latent load.
+2. Ventilation inside the MPC, so that night flush and demand control are planned together.

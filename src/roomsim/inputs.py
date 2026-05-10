@@ -54,7 +54,8 @@ class SummerScenario:
           T_o; because p_ws is strongly nonlinear, W_o then doubles between 3 h and 15 h
           (0.008 -> 0.0165 kg/kg), which overstates the afternoon latent load.
     G_sol half-sine between sunrise and sunset, zero at night.
-    n_occ step function, occupied on [occ_start, occ_end).
+    n_occ step function, occupied on [occ_start, occ_end) with n_people; or, if ``occupancy`` is
+          given, a profile of (start_h, end_h, people) intervals (zero outside them).
     """
 
     T_mean: float = 26.0
@@ -69,6 +70,7 @@ class SummerScenario:
     occ_start_h: float = 8.0
     occ_end_h: float = 18.0
     C_o: float = 420.0
+    occupancy: tuple | None = None
 
     def T_o(self, t):
         t = np.asarray(t, dtype=float)
@@ -88,8 +90,13 @@ class SummerScenario:
 
     def n_occ(self, t):
         h = hour_of_day(t)
-        occupied = (h >= self.occ_start_h) & (h < self.occ_end_h)
-        return np.where(occupied, self.n_people, 0.0)
+        if self.occupancy is None:
+            occupied = (h >= self.occ_start_h) & (h < self.occ_end_h)
+            return np.where(occupied, self.n_people, 0.0)
+        n = np.zeros_like(h)
+        for start, end, people in self.occupancy:
+            n = np.where((h >= start) & (h < end), people, n)
+        return n
 
     def __call__(self, t) -> Disturbances:
         ones = np.ones_like(np.asarray(t, dtype=float))
@@ -114,3 +121,8 @@ class ConstantInputs:
         ones = np.ones_like(np.asarray(t, dtype=float))
         return Disturbances(self.T_o * ones, self.W_o * ones, self.G_sol * ones,
                             self.n_occ * ones, self.C_o * ones)
+
+
+# Office day with variable occupancy (decision D27): late arrival, lunch, a meeting, early leave.
+VARIABLE_OCCUPANCY = ((8.0, 9.0, 1.0), (9.0, 12.0, 2.0), (13.0, 15.0, 2.0), (15.0, 16.0, 3.0),
+                      (16.0, 18.0, 1.0))

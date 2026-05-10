@@ -72,3 +72,12 @@ def test_constant_inputs_shape():
     d = ConstantInputs(T_o=30.0)(np.zeros(5))
     assert d.T_o.shape == (5,)
     assert np.all(d.T_o == 30.0)
+
+
+def test_variable_occupancy_profile():
+    from roomsim.inputs import VARIABLE_OCCUPANCY
+    S_var = SummerScenario(occupancy=VARIABLE_OCCUPANCY)
+    hours = np.array([7.5, 8.5, 10.0, 12.5, 14.0, 15.5, 17.0, 18.5])
+    assert list(S_var.n_occ(hours * HOUR)) == [0, 1, 2, 0, 2, 3, 1, 0]
+    t = np.arange(0.0, DAY, 60.0)
+    assert S_var.n_occ(t).mean() * 24 / 10 == pytest.approx(1.6)     # mean over 8-18 h
