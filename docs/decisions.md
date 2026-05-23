@@ -190,7 +190,8 @@ to the answer. Changes made after seeing results are added as separate entries.
   - Output between the occupied minimum and 0.03 m³/s, with back-calculation anti-windup.
 - **V2, demand-controlled, staged:** three fan levels (0.006, 0.012 and 0.024 m³/s), switched
   up at 850 / 950 ppm and down at 750 / 850 ppm, with a 5-minute minimum dwell time on each
-  level. This represents the generic form of staged demand-controlled ventilation.
+  level. This is a generic form of staged demand-controlled
+  ventilation.
 - **V3, V1 plus night flush:**
   - Mechanical ventilation at 0.03 m³/s when unoccupied, outdoor air at least 2 K cooler than
     the room, and the room above 22 °C.
@@ -277,7 +278,7 @@ them. It confirmed two defects and three inaccuracies. The fixes follow.
 - **Defect:** T_ref was computed with the sensible capacity at full speed (wet coil, 1 685 W).
   While cycling, the unit runs at minimum speed with a dry coil and delivers 1.5 times more
   sensible cooling per unit of demand. The measured ripple was therefore 0.74 K instead of the
-  0.5 K claimed.
+  0.5 K intended.
 - **Fix:** use the sensible output per unit of demand at minimum speed; T_ref = 210 s.
 - **Checks:**
   - Measured median ripple over about 100 low-load cycles: 0.50 K. A test now checks this.
