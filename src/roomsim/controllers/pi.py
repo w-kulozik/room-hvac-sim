@@ -9,8 +9,8 @@ The last term (back-calculation) bleeds the integrator whenever the actuator can
 so the integral never winds up beyond what the actuator can deliver. Under a constant error e
 with the actuator saturated at u_max the integrator settles at
     I = u_max - Kp e (1 - Tt/Ti),
-so a smaller Tt keeps it closer to the limit; Tt = Ti/2 is the usual compromise for a PI
-(Astrom & Hagglund), fast to recover without reacting to brief saturations. With integrate=False the
+so a smaller Tt keeps it closer to the limit. Tt = Ti/2 is a choice made here for fast recovery
+(decision D12); with a noisy sensor a longer Tt may be needed. With integrate=False the
 integrator is frozen (conditional integration), used while the unit cycles at low load.
 """
 
@@ -55,7 +55,8 @@ def room_pi_tuning(p: RoomParams, unit: ACUnit, Ts: float = 60.0, tau_c: float =
     Process seen by the controller: demand in [0, 1] -> cooling capacity -> T_a. With the mass
     node held fixed this is first order with tau = tau_air and gain capacity / (H_am + H_ao + H_inf).
     The mass node adds a slow mode that the integral action handles. Dead time: half a sample
-    (zero-order hold) plus the sensor reading delay of one sample is not modelled, so theta = Ts/2.
+    for the zero-order hold; the sensor is read at the sampling instant without further delay,
+    so theta = Ts/2.
     tau_c = 900 s trades speed for robustness to the unmodelled mass dynamics and the coil
     nonlinearity.
     """

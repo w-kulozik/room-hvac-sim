@@ -160,7 +160,7 @@ def loops():
 def test_mpc_keeps_comfort_and_saves_energy(loops):
     m_pi, m_mpc = (compute(loops[k][1], 25.0) for k in ("pi", "mpc"))
     assert m_mpc.Kh_outside_occ < KH_PER_DAY * 2
-    assert m_mpc.energy_kWh < m_pi.energy_kWh            # size of the saving: see the README
+    assert m_mpc.energy_kWh < m_pi.energy_kWh            # size of the saving: see docs/results.md
 
 
 def test_mpc_is_robust_to_model_mismatch(loops):

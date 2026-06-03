@@ -42,7 +42,8 @@ Frost protection: the controller of a real unit slows the compressor when the ev
 temperature would fall below T_evap_min. Here the requested capacity is capped at the value
 that gives T_evap = T_evap_min (bisection; only active at low fan speed and high load).
 
-Water held on the coil (Henderson & Rengarajan, 1996). State M_c, kg, capacity M_max:
+Water held on the coil (mechanism as described by Henderson & Rengarajan, 1996).
+State M_c, kg, capacity M_max:
     compressor on   condensate first wets the coil and drains only once the coil is full:
                     dM_c/dt = m_cond (1 - g),  drain = m_cond g,  g = 0 below 0.95 M_max -> 1 at M_max
     fan only        the film re-evaporates into the air stream at constant air enthalpy:
@@ -140,7 +141,7 @@ class ACParams:
     P_fan_in_nom: float = 25.0       # indoor fan at full speed, W (cubic in speed)
     P_fan_out: float = 40.0          # outdoor fan while the compressor runs, W
     T_evap_min: float = 0.5          # frost protection limit on evaporating temperature, degC
-    tau_start: float = 60.0          # capacity ramp after a start, s (40-90 s measured on small units)
+    tau_start: float = 60.0          # capacity ramp after a start, s (decision D9)
     M_coil_max: float = 0.25         # water the coil holds before it drains, kg
     film_ramp: float = 0.05          # width of the full/dry ramps, fraction of M_coil_max
     rho_air: float = 1.2

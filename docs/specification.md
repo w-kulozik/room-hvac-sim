@@ -11,16 +11,20 @@ first version was physically inconsistent. Each revision is marked **[rev]** wit
 | `params.py` | room parameters in a frozen dataclass, derived quantities as properties |
 | `inputs.py` | disturbances d(t): outdoor weather, sun, occupancy |
 | `plant.py` | `rhs(t, x, u, d, p)` returning dx/dt (continuous plant) and `fluxes(...)` with every term |
-| `integrators.py` | fixed-step explicit Euler and classical RK4 |
+| `integrators.py` | fixed-step explicit Euler and classical fourth-order Runge-Kutta (RK4) |
 | `simulate.py` | fixed-step loop coordinating plant, controller and logging |
 | `controllers/` | **discrete** controllers executed every Δt_c, output held (zero-order hold) |
 | `tests/` | verification of section 5 |
+
+Modules added later (air-conditioning unit, controllers, estimation, ventilation fan) are listed
+in the layout section of the [README](../README.md#layout).
 
 **State** x = [T_a, T_m, W, φ_b, C] **[rev]**
 - T_a: indoor air temperature, °C
 - T_m: thermal-mass temperature (walls, furniture), °C
 - W: indoor humidity ratio, kg water / kg dry air
-- φ_b: relative humidity in equilibrium with the moisture-buffer layer of the interior surfaces, fraction
+- φ_b: relative humidity in equilibrium with the moisture-buffer layer of the interior
+  surfaces, fraction
 - C: indoor CO2 concentration, ppm
 
 **Control input** u = [Q_hvac_sens, ṁ_hvac_lat, V_vent]
@@ -31,38 +35,49 @@ first version was physically inconsistent. Each revision is marked **[rev]** wit
 
 ## 1. Thermal balance: two-node RC model
 
-Air:
-C_a·dT_a/dt = H_am·(T_m − T_a) + (H_ao + H_inf + H_vent)·(T_o − T_a) + f_sol,a·Q_sol + Q_int,conv + Q_hvac_sens
+```
+Air:   C_a·dT_a/dt = H_am·(T_m − T_a) + (H_ao + H_inf + H_vent)·(T_o − T_a)
+                     + f_sol,a·Q_sol + Q_int,conv + Q_hvac_sens
+Mass:  C_m·dT_m/dt = H_am·(T_a − T_m) + H_mo·(T_o − T_m) + (1 − f_sol,a)·Q_sol + Q_int,rad
+```
 
-Mass:
-C_m·dT_m/dt = H_am·(T_a − T_m) + H_mo·(T_o − T_m) + (1 − f_sol,a)·Q_sol + Q_int,rad
-
-with H_inf = ρ·c_p·V·n/3600, H_vent = ρ·c_p·V_vent, H_am = 1/R_am = h_i·A_int and Q_sol = g·A_win·G_sol.
+with H_inf = ρ·c_p·V·n/3600, H_vent = ρ·c_p·V_vent, H_am = 1/R_am = h_i·A_int and
+Q_sol = g·A_win·G_sol.
 
 ## 2. Moisture balance **[rev]**
 
-ρ·V·dW/dt = ρ·(V·n/3600 + V_vent)·(W_o − W) + N_pers·g_vap − ṁ_hvac_lat + ṁ_buf
+```
+ρ·V·dW/dt   = ρ·(V·n/3600 + V_vent)·(W_o − W) + N_pers·g_vap − ṁ_hvac_lat + ṁ_buf
 C_b·dφ_b/dt = −ṁ_buf
-ṁ_buf = G_b·(φ_b·p_ws(T_m) − p_w(W))
+ṁ_buf       = G_b·(φ_b·p_ws(T_m) − p_w(W))
+```
 
 *Reason:* the original balance stored moisture in the room air only. Interior surfaces
 (painted gypsum) hold about as much exchangeable moisture over a day as the air itself, so the
 air-only model makes humidity respond twice as fast as it does in a real room, which would flatter
-any humidity controller. The buffer follows the Effective Moisture Penetration Depth (EMPD)
-model used by EnergyPlus:
+any humidity controller. The buffer is the surface layer of the Effective Moisture Penetration
+Depth (EMPD) model as documented in the EnergyPlus Engineering Reference, without its deep layer
+and coating ([references.md](references.md)):
 
 - C_b = ρ_mat·d_EMPD·A·(du/dφ): water stored per unit RH of the layer.
-- G_b = A / (1/β + (d_EMPD/2)/δ): surface resistance in series with diffusion through half the layer.
+- G_b = A / (1/β + (d_EMPD/2)/δ): surface resistance in series with diffusion through half the
+  layer.
 - β from the Lewis analogy: β = h_i/(ρ·c_p)/(R_v·T).
 - The layer is at the mass temperature T_m, so a warming wall releases moisture.
 - The heat of sorption is neglected (order 10 W for daily cycles).
-- Can be switched off with `RoomParams(moisture_buffer=False)`, which recovers the original model.
+- Can be switched off with `RoomParams(moisture_buffer=False)`, which recovers the original
+  model.
 
 ## 2b. CO2 balance
 
+```
 V·dC/dt = (V·n/3600 + V_vent)·(C_o − C) + N_pers·G_CO2·10⁶
+```
 
-with C in ppm, C_o = 420 ppm and G_CO2 = 0.0052 L/s per person (sedentary office, 1.2 met).
+with C in ppm, C_o = 420 ppm and G_CO2 = 0.0052 L/s = 5.2·10⁻⁶ m³/s per person (sedentary
+office, 1.2 met); in the equation G_CO2 is in m³/s. The value is the one for an adult at 1.2 met
+cited in ASHRAE Standard 62.1. Persily and de Jonge (2017) estimate a lower average for office
+occupants, 0.0048 L/s, so the CO2 rise here is on the high side.
 With infiltration alone the occupied steady state is 1 807 ppm, so the room needs mechanical
 ventilation; V_vent is the actuator for ventilation-level strategies.
 
@@ -73,16 +88,20 @@ Commands from the controller: compressor speed s (0 = off, otherwise [0.3, 1]), 
 Q_hvac_sens = −Q_sens + P_fan,in and ṁ_hvac_lat at every Runge-Kutta stage, using the return-air
 state of that stage.
 
+Abbreviations: BF, bypass factor; NTU, number of transfer units; UA, heat-exchanger
+conductance; COP, coefficient of performance of the compressor; EER, energy efficiency ratio of
+the whole unit; SHR, sensible heat ratio.
+
 | Item | Model |
 |---|---|
 | Coil | bypass factor BF = exp(−NTU), NTU ∝ ṁ^−0.4; BF = 0.15 at 450 m³/h |
 | Dry / wet | dry if the coil surface is above the inlet dew point (closed form); wet: Newton on h_sat(T_s); continuous at the switch |
 | Split | Q_sens = ṁ(c_pa + c_pv W_out)(T_in − T_out), Q_lat = ṁ_lat(h_fg0 + c_pv T_in): their sum equals ṁ Δh exactly |
 | Outlet | brought to saturation at constant enthalpy if the mixing line would cross it |
-| Capacity | 2.5 kW at 35 °C outdoor, −1 %/K above |
+| Capacity | 2.5 kW at 35 °C outdoor, changing linearly by 1 % per K of outdoor temperature (lower above 35 °C, higher below) |
 | Frost protection | capacity capped so that the evaporating temperature stays ≥ 0.5 °C |
-| Cycle | COP = η(s) T_evap/(T_cond − T_evap), T_evap = T_s − Q/UA_evap, T_cond = max(T_o + Q_cond/UA_cond, T_evap + 15 K), closed form; η calibrated to EER 3.5 (fans included) at 35 °C / 27 °C / W = 0.0114 |
-| Start-up | delivered capacity × (1 − e^(−t_on/60 s)) (40-90 s measured on small units); compressor power that of the full capacity |
+| Cycle | COP = η(s) T_evap/(T_cond − T_evap) with absolute temperatures, T_evap = T_s − Q/UA_evap, T_cond = max(T_o + Q_cond/UA_cond, T_evap + 15 K) with Q_cond = Q_coil (1 + 1/COP), closed form; η calibrated to EER 3.5 (fans included) at 35 °C / 27 °C / W = 0.0114 |
+| Start-up | delivered capacity × (1 − e^(−t_on/60 s)); compressor power that of the steady operating point at the commanded speed. Choice of 60 s: decision D9 in [decisions.md](decisions.md) |
 
 At rating conditions: SHR 0.73, coil surface 13 °C, supply 15 °C. Lower fan speed gives a colder
 coil, more dehumidification and a lower COP; part load raises the EER (3.5 → 4.0 at 30 %).
@@ -93,7 +112,9 @@ order (1.1): at Δt = 60 s the error is 2·10⁻⁴ K instead of 1·10⁻¹⁰ K
 
 ## 3. Psychrometrics (p = 101 325 Pa)
 
-- Saturation pressure (Magnus, T in °C): p_ws = 610.94·exp(17.625·T/(T + 243.04)) Pa
+- Saturation pressure, Magnus form with the coefficients of Alduchov and Eskridge, recommended
+  by them for water between −40 and 50 °C (T in °C):
+  p_ws = 610.94·exp(17.625·T/(T + 243.04)) Pa
 - Humidity ratio: W = 0.622·p_w/(p − p_w); inverse p_w = W·p/(0.622 + W)
 - Relative humidity: RH = p_w/p_ws(T)
 - Dew point: T_d = 243.04·ln(p_w/610.94)/(17.625 − ln(p_w/610.94))
@@ -103,7 +124,7 @@ order (1.1): at Δt = 60 s the error is 2·10⁻⁴ K instead of 1·10⁻¹⁰ K
 
 Room 5 × 4 × 2.7 m, office for two people.
 
-| | Value |
+| Quantity | Value |
 |---|---|
 | V | 54 m³ |
 | C_a | ρ·c_p·V·5 ≈ 0.33 MJ/K (factor 5 for furnishings) |
@@ -119,7 +140,7 @@ Room 5 × 4 × 2.7 m, office for two people.
 **Summer scenario, 3 days** (preceded by warm-up days, see below)
 - T_o = 26 + 6·sin(2π(t/86400 − 9/24)) °C, maximum at 15 h.
 - Outdoor humidity **[rev]**: W_o constant, equal to RH 55 % at the mean temperature 26 °C
-  (W_o = 0.0116 kg/kg). *Reason:* holding RH_o = 55 % constant and converting at the
+  (W_o = 0.0115 kg/kg). *Reason:* holding RH_o = 55 % constant and converting at the
   instantaneous T_o makes W_o double between 3 h and 15 h (0.008 → 0.0165 kg/kg), which no real
   air mass does and which overstates the afternoon latent load. The original behaviour remains
   available with `SummerScenario(constant_W=False)`.
@@ -131,7 +152,8 @@ simulated period, so the result depends on the initial state. The reported run i
 warm-up days (discarded) until the daily cycle is periodic.
 
 **Time scales:** τ_air ≈ 1 700 s; τ_mass ≈ 3.1 days; air moisture alone 3 600/n = 7 200 s;
-air-buffer exchange ≈ 400 s (coupled mode); apparent moisture time constant with buffering ≈ 15 000 s.
+air-buffer exchange ≈ 400 s (coupled mode); apparent moisture time constant with buffering
+≈ 15 000 s.
 The system is stiff. RK4 with 60 s is accurate; explicit Euler is stable for steps below
 2/|λ_max|, checked numerically from the Jacobian. **[rev]** The fastest mode is the air-buffer
 moisture exchange, not the air temperature, and it stiffens with temperature because the
@@ -140,10 +162,14 @@ buffer flux scales with p_ws(T_m): the Euler limit is ≈ 790 s at 26 °C and �
 
 ## 5. Verification
 
-1. **Psychrometrics:** p_ws(20 °C) ≈ 2.33 kPa; W(25 °C, 50 %) ≈ 0.0099 kg/kg; T_d(20 °C, 50 %) ≈ 9.3 °C.
-2. **Steady state:** with constant inputs, the simulation matches the analytical solution of the 2×2 linear thermal system.
-3. **One-node limit:** a step in outdoor temperature against the analytical exponential. Convergence order ≈ 4 with RK4 and ≈ 1 with Euler.
-4. **Energy-balance closure [rev]:** residual C_a·ΔT_a + C_m·ΔT_m − ∫Σ boundary fluxes dt, checked two ways:
+1. **Psychrometrics:** p_ws(20 °C) ≈ 2.33 kPa; W(25 °C, 50 %) ≈ 0.0099 kg/kg;
+   T_d(20 °C, 50 %) ≈ 9.3 °C.
+2. **Steady state:** with constant inputs, the simulation matches the analytical solution of the
+   2×2 linear thermal system.
+3. **One-node limit:** a step in outdoor temperature against the analytical exponential.
+   Convergence order ≈ 4 with RK4 and ≈ 1 with Euler.
+4. **Energy-balance closure [rev]:** residual C_a·ΔT_a + C_m·ΔT_m − ∫Σ boundary fluxes dt,
+   checked two ways:
    - (a) integrating the fluxes as extra states with the same integrator: closes to round-off
      (every Runge-Kutta method preserves linear invariants), which verifies signs and bookkeeping;
    - (b) integrating the logged fluxes with composite Simpson: the residual falls as O(Δt) with

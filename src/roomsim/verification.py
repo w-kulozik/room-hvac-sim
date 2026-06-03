@@ -1,7 +1,7 @@
 """Analytical reference solutions and convergence studies.
 
 Shared by the test suite and by the scripts that draw the verification figures, so the
-numbers in the README are produced by exactly the code that the tests check.
+numbers in docs/verification.md are produced by exactly the code that the tests check.
 """
 
 from __future__ import annotations

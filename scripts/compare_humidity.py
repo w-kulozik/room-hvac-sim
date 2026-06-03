@@ -71,7 +71,7 @@ def main() -> None:
              "h RH > 60 % occ. | T rms occ. (K) | Starts |", "|" + "---|" * 8]
     for name, r in {**results, "On/off (reference)": onoff}.items():
         m = compute(r, T_SET)
-        water = float(np.sum(r.unit.op["m_lat"][:-1]) * r.dt)
+        water = float(r.unit.M_drain[-1])          # condensate drained in the window, kg
         lines.append(f"| {name} | {m.energy_kWh:.2f} | {water:.1f} | {m.RH_mean_occ:.1f} | "
                      f"{rh_std_occ(r):.2f} | {m.h_RH60_occ:.1f} | {m.T_rms_occ:.2f} | {m.starts} |")
     table = "\n".join(lines)

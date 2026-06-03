@@ -10,6 +10,14 @@ revised during the work, with the evidence behind it.
 
 Where a test was changed after it failed, the entry says whether the model or the test was wrong.
 
+Abbreviations: RH, relative humidity; EMPD, effective moisture penetration depth; COP,
+coefficient of performance; EER, energy efficiency ratio; SHR, sensible heat ratio; PI,
+proportional-integral controller; MPC, model-predictive control; SIMC, Skogestad's tuning rules
+for PI controllers.
+
+Publications named in this log are listed with full references in
+[references.md](references.md).
+
 ---
 
 ## Plant
@@ -19,7 +27,7 @@ Where a test was changed after it failed, the entry says whether the model or th
 - **Observation:** holding RH_o = 55 % and converting at the instantaneous T_o makes W_o go from
   0.0080 to 0.0165 kg/kg within a day. Real air masses keep W roughly constant over a day while
   RH swings.
-- **Decision:** W_o = W(26 °C, 55 %) = 0.0116 kg/kg, constant. The original behaviour remains as
+- **Decision:** W_o = W(26 °C, 55 %) = 0.0115 kg/kg, constant. The original behaviour remains as
   `SummerScenario(constant_W=False)`.
 - **Effect:** the afternoon latent load is no longer doubled.
 
@@ -30,7 +38,8 @@ Where a test was changed after it failed, the entry says whether the model or th
   about as much exchangeable water as the room air: 72 kg against 65 kg of air, in humidity-ratio
   units. The apparent moisture time constant goes from 7 200 s to about 15 000 s.
 - **Alternatives:** a constant multiplier on the air's moisture capacity. Rejected because it
-  misses the exchange dynamics (≈ 900 s) and the release of moisture by warming walls.
+  misses the exchange dynamics (≈ 400 s; first estimated at 900 s, corrected in D22) and the
+  release of moisture by warming walls.
 - **Limits:** heat of sorption neglected (order 10 W in daily cycles).
 
 ### D3. Periodic steady state by Newton shooting
@@ -74,13 +83,19 @@ Where a test was changed after it failed, the entry says whether the model or th
 - **Timing:** after observation.
 - **Observation:** with 120 s, about 30 % of the on/off thermostat's energy went into start-up
   ramps (average on time 6.5 min).
-- **Evidence for the new value:** reported capacity time constants of small units are 40-90 s
-  (O'Neal and Katipamula; Henderson).
+- **Evidence for the new value:** Henderson, Huang and Parker (1999) give 40-60 s as typical of
+  modern residential air conditioners and heat pumps, and use 60 s for their "typical" unit
+  from literature values of 30-80 s. Those are ducted residential units, not small split units,
+  so the value is a plausible order of magnitude, not a property of the modelled unit. Full
+  citations are in [references.md](references.md).
 - **Risk:** the value was revisited because a result looked large. It stays a parameter
   (`ACParams.tau_start`). On/off energy is the result most sensitive to it.
 
-### D10. Water held on the coil (Henderson)
+### D10. Water held on the coil
 - **Timing:** a priori.
+- **Mechanism:** the one described by Henderson and Rengarajan (1996): condensate held on the
+  coil re-evaporates into the air stream when the compressor stops and the fan keeps running.
+  Here the held water is a state of the simulation; their part-load equations are not used.
 - **Parameters:** M_max = 0.25 kg, which fills in about 16 min at rated latent load. Not
   calibrated against a specific unit; the strength of the part-load latent degradation scales
   with it.
@@ -103,8 +118,12 @@ Where a test was changed after it failed, the entry says whether the model or th
   the integrator settles at I = u_max − K_p e (1 − T_t/T_i), so with T_t = T_i and a large error
   it sits at the limit and recovers only through integral action.
 - **Verdict:** the test expectation was wrong.
-- **Decision:** T_t = T_i/2, the usual compromise for a PI (Åström and Hägglund). The test now
-  checks the analytical settling value for three values of T_t.
+- **Decision:** T_t = T_i/2. This is a choice made here, not a value from the literature; the
+  test now checks the analytical settling value for three values of T_t.
+- **Limits:** Åström and Murray (2008, section 10.4) suggest a reset gain that is a fraction of
+  1/T_i, that is T_t longer than T_i, because a short tracking time lets measurement noise reset
+  the integrator. The simulated sensor has no noise, so this risk does not appear here; on a
+  real unit T_t would need checking against sensor noise.
 
 ### D13. Low-load handling separate from the PI
 - **Timing:** a priori.
@@ -120,14 +139,17 @@ Where a test was changed after it failed, the entry says whether the model or th
      already above its set point.
   2. T_ref = 600 s had no physical basis; the resulting ripple was ≈ 0.9-1.1 K.
 - **Decision:** clamp the accumulator to ± threshold, and set T_ref = ΔT_pp C_a / (s_min Q_max),
-  with ΔT_pp = 0.5 K (T_ref ≈ 320 s).
-- **Effect on all PI-based results:** maximum occupied temperature 26.0 → 25.7 °C; starts per
-  three days 84 → 123. Tables were regenerated.
+  with ΔT_pp = 0.5 K (T_ref ≈ 320 s). The capacity in this formula was later corrected (D21,
+  T_ref = 210 s).
+- **Effect on all PI-based results, at the time:** maximum occupied temperature 26.0 → 25.7 °C;
+  starts per three days 84 → 123. Tables were regenerated. The current values, after D20 and
+  D21, are in [results.md](results.md).
 
 ### D15. Humidity through the indoor fan; evaporator thermistor as a measurement
 - **Timing:** a priori.
-- **Evidence:** at minimum speed, going from full to 40 % fan takes the coil from 19 °C (dry) to
-  15 °C (wet), SHR 1.00 → 0.76, for a 5 % loss of EER.
+- **Evidence:** at minimum speed (room at 25 °C and 60 % RH, 32 °C outdoors), going from full to
+  40 % fan takes the coil from 19 °C (dry) to 15 °C (wet), SHR 1.00 → 0.75, for a 5 % loss of
+  EER.
 
 ### D16. MPC supervises the PI instead of driving the compressor
 - **Timing:** after observation.
@@ -151,6 +173,16 @@ Where a test was changed after it failed, the entry says whether the model or th
   | 0.5 K | 5.38 | 0.06 |
   | 0.6 K | 5.45 | 0.01 |
 
+  This sweep was run before the corrections D20 and D21, so its energies are lower than the
+  current ones. Repeated with the current model (same three days after three warm-up days):
+
+  | Margin | Energy (kWh) | K·h outside the band |
+  |---|---|---|
+  | 0.3 K | 5.58 | 0.38 |
+  | 0.4 K | 5.64 | 0.12 |
+  | 0.5 K | 5.71 | 0.03 |
+  | 0.6 K | 5.80 | 0.009 |
+
 - **Reason for 0.6 K:** the comparison with the PI is made at equal comfort.
 
 ---
@@ -165,8 +197,8 @@ to the answer. Changes made after seeing results are added as separate entries.
 - **Problem:** until now ventilation was free, which would favour any strategy that ventilates
   more.
 - **Model:** fan affinity law around a design point. P = P_d (V / V_d)³, with V_d = 0.03 m³/s
-  (108 m³/h) and P_d = 30 W, i.e. a specific fan power of 1 000 W/(m³/s) at design flow, typical
-  of a small ventilation unit.
+  (108 m³/h) and P_d = 30 W, i.e. a specific fan power of 1 000 W/(m³/s) at design flow. This
+  is an assumed value for a small ventilation unit, not taken from a product.
 - **Computation:** ventilation flow is held between controller samples, so fan energy is the
   exact sum of P(V_k) dt.
 - **Not modelled:** heat recovery (in summer it would mostly be bypassed).
@@ -175,11 +207,14 @@ to the answer. Changes made after seeing results are added as separate entries.
 - **Timing:** a priori.
 - **Requirement:** CO2 at or below 1 000 ppm during occupied hours. Reported as occupied hours
   above 1 000 ppm and the occupied maximum.
-- **Minimum flow when occupied:** the building component of ASHRAE 62.1 for offices,
-  0.3 L/(s·m²) × 20 m² = 0.006 m³/s, to remove pollutants that do not scale with occupancy.
+- **Minimum flow when occupied:** the area component of the ASHRAE Standard 62.1 rate for
+  office space, 0.3 L/(s·m²) × 20 m² = 0.006 m³/s, to remove pollutants that do not scale
+  with occupancy.
 - **Unoccupied:** no flow, except when a strategy ventilates for cooling (D26).
-- **Context:** the existing fixed schedule (0.0105 m³/s while occupied) is close to the full
-  62.1 rate for two people (2 × 2.5 L/s + 6 L/s = 0.011 m³/s).
+- **Context:** the existing fixed schedule (0.0105 m³/s while occupied) is close to the 62.1
+  breathing-zone rate for two people, people plus area component (2 × 2.5 L/s + 6 L/s =
+  0.011 m³/s), before any correction for air distribution. Edition and source of these rates:
+  [references.md](references.md).
 
 ### D25. Strategies compared
 - **Timing:** a priori. All strategies use the same temperature and humidity control
@@ -190,8 +225,7 @@ to the answer. Changes made after seeing results are added as separate entries.
   - Output between the occupied minimum and 0.03 m³/s, with back-calculation anti-windup.
 - **V2, demand-controlled, staged:** three fan levels (0.006, 0.012 and 0.024 m³/s), switched
   up at 850 / 950 ppm and down at 750 / 850 ppm, with a 5-minute minimum dwell time on each
-  level. This is a generic form of staged demand-controlled
-  ventilation.
+  level. This is a generic form of staged demand-controlled ventilation.
 - **V3, V1 plus night flush:**
   - Mechanical ventilation at 0.03 m³/s when unoccupied, outdoor air at least 2 K cooler than
     the room, and the room above 22 °C.
@@ -204,9 +238,11 @@ to the answer. Changes made after seeing results are added as separate entries.
   V_room/(V_inf + V).
 - **Tuning:** SIMC with τ_c = 900 s, as for the temperature loop, computed from the parameters
   (`dcv_tuning`).
-- **Arithmetic correction, made before any run:** the first version of this entry used
-  V_inf + V ≈ 0.0175 m³/s. The steady state at 900 ppm requires N G / (C − C_o) = 0.0217 m³/s,
-  so τ ≈ 2 500 s and ∂C/∂V ≈ −22 000 ppm per m³/s.
+- **Arithmetic correction:** the first version of this entry used V_inf + V ≈ 0.0175 m³/s.
+  The steady state at 900 ppm requires N G / (C − C_o) = 0.0217 m³/s, so τ ≈ 2 500 s and
+  ∂C/∂V ≈ −22 000 ppm per m³/s. The correction was committed together with the first
+  ventilation runs. It changes only the numbers written here: the code has always computed
+  the gains from the parameters (`dcv_tuning`), so every run used the corrected values.
 
 ### D27. Variable-occupancy scenario
 - **Timing:** after observation. Written before running the new scenario; the strategies and
@@ -247,18 +283,18 @@ to the answer. Changes made after seeing results are added as separate entries.
 
 ## Findings of the final audit
 
-A reviewer with no access to the development history read the code and docs and tried to break
-them. It confirmed two defects and three inaccuracies. The fixes follow.
+A final audit read the code and docs from scratch, without the development history, and tried
+to break them. It confirmed two defects and three inaccuracies. The fixes follow.
 
 ### D20. Minimum condensing lift in the cycle model
 - **Timing:** after observation; found in the final audit.
 - **Defect:** COP = (η T_ev − a)/(T_o − T_ev + a) had no floor on T_cond − T_ev. At minimum speed
   the COP reached 17.9 at 20 °C outdoors, 77 at 15 °C, and went negative below about 13 °C.
   36 % of the PI's running time in the summer scenario was at COP > 8.
-- **Fix:** T_cond ≥ T_ev + 15 K, which represents head-pressure control holding the compressor's
-  minimum pressure ratio and the expansion device's minimum pressure difference. Over 0-45 °C outdoors,
-  all speeds and fan settings, COP now stays within 2.5-9.3 and is continuous where the floor
-  takes over.
+- **Fix:** T_cond ≥ T_ev + 15 K, which represents head-pressure control holding the
+  compressor's minimum pressure ratio and the expansion device's minimum pressure difference.
+  Over 0-45 °C outdoors, all speeds and fan settings, COP now stays within 2.5-9.3 and is
+  continuous where the floor takes over.
 - **Effect on results:**
 
   | Result | Before | After |
@@ -287,8 +323,9 @@ them. It confirmed two defects and three inaccuracies. The fixes follow.
 ### D22. Documentation and test corrections
 - The coupled air-buffer moisture mode is about 400 s, not 900 s (≈ 820 s is the buffer side
   alone). The test bound was tightened from 300-1000 s to 350-450 s.
-- The room dew point under PI control is 17.6 °C, not about 16 °C. The coil at minimum speed
-  (18.4-19.1 °C) is still dry, but with a margin of only about 1 K at night.
+- The room dew point under PI control is about 17.7 °C while occupied, not about 16 °C. The
+  coil at minimum speed (18.3-19.4 °C once the start-up ramp has decayed) is still dry, but
+  with a margin of about 1 K, falling to 0.6 K at night.
 - The sigma-delta mean-demand test tolerance went from 0.01 to 0.003. Measured errors are
   ≤ 0.0017; at v = 0.05 the old tolerance allowed 20 %.
 - The evaporator thermistor in fan-only mode now reads the wet-bulb temperature only if the coil
@@ -350,11 +387,17 @@ stated basis:
   runs wet. The effect on reported numbers is expected to be small but has not been quantified.
 - The MPC's Kalman filter estimates the last sample's cooling with full fan speed, no start-up
   ramp and the forecast outdoor temperature. The disturbance state absorbs the difference.
-
 - Single zone, well-mixed air; no radiant temperature or operative-temperature comfort.
+- One synthetic summer day (sinusoidal outdoor temperature, constant outdoor humidity ratio,
+  half-sine solar irradiance) repeated; no measured weather and no other seasons.
+- The model is verified (the equations are solved correctly) but not validated against
+  measurements of a real room or unit.
 - The MPC's model has no humidity, so it cannot trade sensible against latent load.
 - MPC disturbance forecasts are held over each 15-minute step.
 - The Kalman filter needs about a day to separate a wrong mass temperature from a heat
   disturbance with a single air sensor.
 - Unit parameters (UA values, coil holdup, start-up constant) are plausible for a 2.5 kW split
   unit but not fitted to a specific product.
+- The ventilation fan follows the cube law of a fixed duct system. Under constant-pressure
+  control the fan power falls more slowly with flow, which would reduce the benefit of the
+  reduced night-flush flows.

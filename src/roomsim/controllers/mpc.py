@@ -7,7 +7,7 @@ Planner. Every Ts_pred (15 min) the controller solves, over a 24 h horizon with 
           0 <= u_j <= U_max,j,   eps_j >= 0
 
 where u_j is the sensible cooling (W), c_j the electrical energy per unit of sensible cooling
-forecast for that hour (the unit's COP depends on the outdoor temperature), times the price
+forecast for that step (the unit's COP depends on the outdoor temperature), times the price
 relative to off-peak when a time-of-use tariff is given, and T_a,j+1 is
 affine in u through the linear RC model, the forecast gains and the disturbance estimated by
 the Kalman filter. The comfort band is narrow while the office is occupied and wide otherwise,

@@ -48,7 +48,7 @@ class SummerScenario:
     """Sinusoidal summer day repeated indefinitely.
 
     T_o   = T_mean + amp * sin(2*pi*(t/day - phase_h/24)); phase 9 h puts the maximum at 15 h.
-    W_o   by default RH_o evaluated at T_mean and held constant (W_o = 0.0116 kg/kg), so the
+    W_o   by default RH_o evaluated at T_mean and held constant (W_o = 0.0115 kg/kg), so the
           outdoor RH swings during the day as it does in a real air mass. With
           ``constant_W=False`` RH_o is held constant instead and converted at the instantaneous
           T_o; because p_ws is strongly nonlinear, W_o then doubles between 3 h and 15 h

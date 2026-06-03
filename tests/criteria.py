@@ -1,7 +1,8 @@
 """Acceptance criteria for closed-loop tests, defined once with their rationale.
 
 Closed-loop results depend on tuning, so their tests check requirements stated here rather than
-thresholds read off a run. Measured values are reported in the README, not encoded in the tests.
+thresholds read off a run. Measured values are reported in docs/results.md, not encoded in the
+tests.
 Orderings between controllers (A uses less energy than B) are tested as strict inequalities:
 the simulations are deterministic, so any difference is real; its size is documented elsewhere.
 """

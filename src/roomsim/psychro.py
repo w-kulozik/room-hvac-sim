@@ -7,8 +7,8 @@ All functions accept scalars or numpy arrays. Units:
     RH         relative humidity, fraction 0..1 (not percent)
     h          specific enthalpy, kJ / kg dry air
 
-Saturation pressure uses the Magnus form (Alduchov & Eskridge 1996 coefficients),
-valid over liquid water for roughly -40..50 degC.
+Saturation pressure uses the Magnus form with the coefficients of Alduchov & Eskridge (1996),
+recommended by them for liquid water between -40 and 50 degC.
 """
 
 from __future__ import annotations

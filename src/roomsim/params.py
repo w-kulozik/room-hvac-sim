@@ -37,10 +37,11 @@ class RoomParams:
     q_person_sens: float = 70.0              # sensible gain per person, W
     f_person_conv: float = 0.5               # convective fraction of sensible gain
     g_vap_person_kg_h: float = 0.05          # vapour released per person, kg/h
-    co2_person_l_s: float = 0.0052           # CO2 per person, L/s (1.2 met, ASHRAE 62.1 basis)
+    co2_person_l_s: float = 0.0052           # CO2 per person, L/s (adult, 1.2 met; ASHRAE 62.1)
 
     # Moisture buffering of interior surfaces, Effective Moisture Penetration Depth (EMPD)
-    # model as in EnergyPlus. Defaults: painted gypsum board on the interior surfaces.
+    # model (surface layer only, as in the EnergyPlus Engineering Reference). Defaults: painted
+    # gypsum board on the interior surfaces.
     moisture_buffer: bool = True
     buffer_area: float = 60.0                # m2, same surfaces as A_int
     buffer_density: float = 800.0            # dry density of the layer, kg/m3

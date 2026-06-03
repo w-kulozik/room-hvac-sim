@@ -21,8 +21,8 @@ tolerance, so that no threshold is read off a run and written back into the test
 4. **Closed-loop requirements.** Comfort, humidity accuracy and robustness, defined once in
    [`criteria.py`](criteria.py) with their rationale.
    - Comparisons between controllers are strict orderings; the simulations are deterministic,
-     so any difference is real. The size of the difference is reported in the README, not
-     asserted.
+     so any difference is real. The size of the difference is reported in
+     [`docs/results.md`](../docs/results.md), not asserted.
 
 Changes made to tests after they failed are listed in [`docs/decisions.md`](../docs/decisions.md),
 with whether the test or the code was wrong.
