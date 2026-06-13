@@ -170,9 +170,9 @@ does not know about it.
 - **A time-of-use tariff does not pay off here.** With the tariff the MPC pre-cools overnight,
   storing cold in the thermal mass, and lowers its own cost by 2.5 %, but ends level with the
   set-back PI (1.97 against 1.96 EUR) while using 7 % more energy. An earlier version reported a
-  10 % saving; the final audit traced it to an unbounded cycle COP at night (above 17 at
-  20 °C outdoors), which made night-time cooling look almost free. With a minimum condensing lift
-  the advantage disappears (decision D20).
+  10 % saving; the end-of-project check traced it to an unbounded cycle COP at night (above
+  17 at 20 °C outdoors), which made night-time cooling look almost free. With a minimum
+  condensing lift the advantage disappears (decision D20).
 - **Robustness**: 20 % errors in five model parameters, or a forecast 2 K too warm with 30 % less
   sun, change the energy by less than 1 % and keep the comfort criterion. The Kalman disturbance
   state absorbs both.

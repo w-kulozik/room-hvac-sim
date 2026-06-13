@@ -1,4 +1,4 @@
-"""Shared matplotlib styling and the day-1 figures.
+"""Shared matplotlib styling and the baseline figures.
 
 Colours: first three slots of a categorical palette validated for colour-vision deficiency
 on all pairs. Identity is never colour-only: every series also has a legend entry and,

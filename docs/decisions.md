@@ -281,13 +281,13 @@ to the answer. Changes made after seeing results are added as separate entries.
   roughly half that flow (exploratory sweep). V3 was not redefined; the sweep is reported
   separately.
 
-## Findings of the final audit
+## Corrections after the end-of-project check
 
-A final audit read the code and docs from scratch, without the development history, and tried
-to break them. It confirmed two defects and three inaccuracies. The fixes follow.
+At the end of the project the code and documents were checked again, looking for errors. The
+check found two defects and three inaccuracies. The fixes follow.
 
 ### D20. Minimum condensing lift in the cycle model
-- **Timing:** after observation; found in the final audit.
+- **Timing:** after observation; found in the end-of-project check.
 - **Defect:** COP = (η T_ev − a)/(T_o − T_ev + a) had no floor on T_cond − T_ev. At minimum speed
   the COP reached 17.9 at 20 °C outdoors, 77 at 15 °C, and went negative below about 13 °C.
   36 % of the PI's running time in the summer scenario was at COP > 8.
@@ -310,7 +310,7 @@ to break them. It confirmed two defects and three inaccuracies. The fixes follow
   energies depend on it.
 
 ### D21. Sigma-delta ripple design used the wrong capacity
-- **Timing:** after observation; found in the final audit.
+- **Timing:** after observation; found in the end-of-project check.
 - **Defect:** T_ref was computed with the sensible capacity at full speed (wet coil, 1 685 W).
   While cycling, the unit runs at minimum speed with a dry coil and delivers 1.5 times more
   sensible cooling per unit of demand. The measured ripple was therefore 0.74 K instead of the

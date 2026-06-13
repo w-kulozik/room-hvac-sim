@@ -1,4 +1,4 @@
-"""Day-1 deliverable: three summer days without air conditioning.
+"""Baseline: three summer days without air conditioning.
 
 Produces figures/temperatures.png, figures/humidity.png, figures/energy_balance.png and
 figures/convergence.png, and prints the free-floating baseline indicators.

@@ -1,7 +1,7 @@
 # Model specification
 
-Day-1 specification of the room plant, revised where the implementation showed that the
-first version was physically inconsistent. Each revision is marked **[rev]** with the reason.
+Specification of the room plant. Where the implementation showed that an earlier formulation
+was physically inconsistent, it was revised; each revision is marked **[rev]** with the reason.
 
 ## 0. Structure
 
@@ -31,7 +31,7 @@ in the layout section of the [README](../README.md#layout).
 - Q_hvac_sens: sensible heat delivered by the unit, W (negative when cooling)
 - ṁ_hvac_lat: water removed by the unit, kg/s
 - V_vent: mechanical outdoor-air supply, m³/s (balanced, no heat recovery)
-- Zero on day 1.
+- Zero in the baseline.
 
 ## 1. Thermal balance: two-node RC model
 
@@ -180,7 +180,7 @@ buffer flux scales with p_ws(T_m): the Euler limit is ≈ 790 s at 26 °C and �
    - buffer on, isothermal: W and φ_b follow the analytical solution of the linearised 2×2 system
      (one fast and one slow exponential).
 
-## 6. Day-1 deliverable
+## 6. Baseline deliverable
 
 - 3-day simulation without air conditioning.
 - Figures: temperatures (T_a, T_m, T_o); relative humidity with dew point; energy-balance closure.

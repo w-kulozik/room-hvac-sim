@@ -1,7 +1,7 @@
 # Model
 
-The room model and the air-conditioning unit. The full specification, with every place where it
-departs from its first version and why, is in [specification.md](specification.md).
+The room model and the air-conditioning unit. The full specification, with each revision and
+its reason, is in [specification.md](specification.md).
 
 ## Room
 

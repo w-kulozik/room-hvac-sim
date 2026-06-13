@@ -2,9 +2,9 @@
 
 ## Checks
 
-All checks run in `pytest` (151 tests, about two minutes on a laptop). The code was also
-audited from scratch, without the development history; the findings and
-fixes are in [decisions.md](decisions.md) (D20-D22).
+All checks run in `pytest` (151 tests, about two minutes on a laptop). The code and documents
+were checked again at the end of the project; the defects found and their fixes are in
+[decisions.md](decisions.md) (D20-D22).
 
 RK4 is the classical fourth-order Runge-Kutta method, PI a proportional-integral controller and
 MPC model-predictive control. Convergence orders are fitted by least squares over a sequence of

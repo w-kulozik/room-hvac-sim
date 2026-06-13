@@ -56,10 +56,10 @@ Read in this order:
    above come from here.
 3. [docs/verification.md](docs/verification.md): what is checked and how accurately.
 4. [docs/decisions.md](docs/decisions.md): the log of modelling and study decisions (D1-D28).
-   It records which ones were fixed before running a study, the findings of the final
-   audit, and the known limitations.
-5. [docs/specification.md](docs/specification.md): the full specification and where it
-   departs from its first version.
+   It records which ones were fixed before running a study, the corrections made after the
+   end-of-project check, and the known limitations.
+5. [docs/specification.md](docs/specification.md): the full specification and its
+   revisions.
 6. [tests/README.md](tests/README.md): how test tolerances are chosen.
 7. [docs/references.md](docs/references.md): the publications cited, what was read in each and
    what is taken from it.
@@ -112,3 +112,7 @@ figures/           figures and result tables written by the scripts
 
 1. MPC with humidity in the model, so that the planner can trade sensible against latent load.
 2. Ventilation inside the MPC, so that night flush and demand control are planned together.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
