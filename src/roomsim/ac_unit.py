@@ -5,17 +5,35 @@ Commands
     f    indoor fan speed fraction; 0 = off, otherwise clipped to [f_min, 1]
          (f > 0 with s = 0 is fan-only operation)
 
-Coil (bypass-factor / apparatus-dew-point model, equivalent to an effectiveness-NTU coil
-with Lewis number 1 and a uniform surface temperature T_s):
-    BF   = exp(-NTU),  NTU = NTU_nom * (m / m_nom)^(-0.4)   (air-side h ~ Re^0.6)
-    dry  T_out = T_s + BF (T_in - T_s),          W_out = W_in
-    wet  h_out = h_sat(T_s) + BF (h_in - h_sat(T_s)),
-         W_out = W_sat(T_s) + BF (W_in - W_sat(T_s))
-For a requested total capacity Q the surface temperature follows from
-    dry  Q = m cp_m (1 - BF)(T_in - T_s)         (closed form)
-    wet  Q = m (1 - BF)(h_in - h_sat(T_s))       (Newton on h_sat, analytic derivative)
-The coil is dry when the dry solution gives T_s >= dew point of the inlet air. Both branches
-coincide at T_s = T_dew,in, so capacity and outlet state are continuous across the switch.
+Coil (partially wet). The refrigerant evaporates at a uniform temperature T_r (two-phase; the
+short superheated end is neglected). Air and refrigerant exchange heat through two conductances
+in series:
+    air side          UA_a = NTU_a m cp_m,  NTU_a = NTU_nom (m / m_nom)^(-0.4)   (h ~ Re^0.6)
+                      BF = exp(-NTU_a) is the air-side bypass factor (0.15 at full fan)
+    refrigerant side  UA_r = UA_evap
+On a dry surface the local surface temperature lies between the air and the refrigerant,
+    T_w = T_r + r (T - T_r),   r = UA_a / (UA_a + UA_r),
+so the surface is warmest where the air enters and cools along the air path. The coil is dry
+near the air inlet and wet downstream of the point where T_w reaches the dew point T_dp of the
+entering air. This is the part-wet, part-dry structure of the detailed Coil:Cooling:Water model
+of the EnergyPlus Engineering Reference (the wet/dry boundary sits where the surface reaches the
+air dew point; the wet part uses an enthalpy-based conductance), applied here to a refrigerant
+at uniform temperature, for which both parts have closed forms (decision D29). With x_d the
+dry fraction of the surface and UA_o = (1/UA_a + 1/UA_r)^-1, NTU_o = UA_o / (m cp_m):
+    dry part   T - T_r = (T_in - T_r) exp(-NTU_o x)
+               boundary air temperature  T_b = T_r + (T_dp - T_r) / r
+               x_d = ln[(T_in - T_r) / (T_b - T_r)] / NTU_o, clipped to [0, 1]
+    wet part   (Lewis number 1)  UA_h = 1 / (c_s / UA_r + cp_m / UA_a),  kg/s
+               h_out = h_sat(T_r) + (h_b - h_sat(T_r)) exp(-UA_h (1 - x_d) / m)
+               c_s is the secant slope of h_sat between T_r and the surface temperature where
+               the wet part starts (T_dp, or the inlet surface temperature if the coil is wet
+               from the inlet). With this choice the two parts meet exactly at the boundary.
+    outlet     effective condensing surface, as in the EnergyPlus model:
+               eta = 1 - exp(-NTU_a (1 - x_d)),  h_c = h_b - (h_b - h_out) / eta,
+               T_c = T_sat(h_c),  T_out = T_c + (T_b - T_c)(1 - eta),  W_out from (T_out, h_out)
+As T_r falls, x_d moves continuously from 1 (dry) to 0 (wet from the inlet), so capacity, outlet
+state and water removal are continuous: there is no dry/wet switch. The mean surface
+temperature, read by the evaporator thermistor, is T_s = T_r + Q / UA_r.
 
 Sensible/latent split, exact for h = cp_a T + W (h_fg0 + cp_v T):
     h_in - h_out = (cp_a + cp_v W_out)(T_in - T_out) + (W_in - W_out)(h_fg0 + cp_v T_in)
@@ -23,24 +41,41 @@ Sensible/latent split, exact for h = cp_a T + W (h_fg0 + cp_v T):
 The refrigerant also takes the enthalpy of the condensate leaving at T_s:
     Q_coil = m (h_in - h_out) - m_lat cp_w T_s.
 
-Refrigeration cycle (Carnot fraction with finite-UA heat exchangers):
-    T_evap = T_s - Q_coil / UA_evap
+Compressor capacity. The speed sets the displaced volume; the mass flow, and so the capacity,
+rises with the evaporating temperature (suction density) and falls with the outdoor temperature:
+    Q_comp(T_r) = s Q_rated [1 + k_e (T_r - T_r,rated)] [1 - k_o (T_o - T_o,rated)]
+The coil takes less heat the warmer T_r, so Q_air(T_r) = Q_comp(T_r) has a single root (Brent's
+method). Less airflow, or cooler and drier return air, lowers T_r and with it the capacity: the
+flow-fraction and entering-wet-bulb dependences that the EnergyPlus DX coil model writes as
+curves (CAP-FFF, CAP-FT) follow here from the coil. k_o and k_e are set from the EnergyPlus
+example curve WindACCoolCapFT (decision D30), both fitted through the coil at the rating point:
+k_e so that the unit's capacity has the curve's entering-wet-bulb slope, then k_o so that the
+capacity at fixed entering air has the curve's outdoor slope. k_o is larger than that slope
+because less capacity lets the evaporator warm, which gives back part of the loss.
+
+Refrigeration cycle (Carnot fraction with finite-UA condenser):
     T_cond = T_o + Q_cond / UA_cond,   Q_cond = Q_coil (1 + 1/COP)
-    COP    = eta(s) T_evap / (T_cond - T_evap)
+    COP    = eta(s) T_r / (T_cond - T_r)
 Substituting T_cond gives COP in closed form (no iteration):
-    COP = (eta T_evap - a) / (T_o - T_evap + a),   a = Q_coil / UA_cond
-eta is calibrated so that the unit meets its rated EER (fans included) at rating conditions.
+    COP = (eta T_r - a) / (T_o - T_r + a),   a = Q_coil / UA_cond
+eta is calibrated so that the unit meets its rated net EER at rating conditions: the net
+capacity (coil capacity minus the indoor fan heat, which ends up in the room) over the total
+electrical power, fans included.
 Minimum lift: a real cycle cannot let the condensing temperature fall towards the evaporating
 one. The compressor needs a minimum pressure ratio and the expansion device a minimum pressure
 difference, and head-pressure control (outdoor fan speed) holds them. The cycle therefore keeps
-T_cond - T_evap >= dT_lift_min; when the formula above would go below it (mild outdoor air, low
-load), T_cond = T_evap + dT_lift_min and COP = eta T_evap / dT_lift_min. The two expressions
+T_cond - T_r >= dT_lift_min; when the formula above would go below it (mild outdoor air, low
+load), T_cond = T_r + dT_lift_min and COP = eta T_r / dT_lift_min. The two expressions
 meet continuously at the switch. Without this floor the COP exceeded 17 at 20 degC outdoors and
 became negative below about 13 degC.
 
 Frost protection: the controller of a real unit slows the compressor when the evaporating
-temperature would fall below T_evap_min. Here the requested capacity is capped at the value
-that gives T_evap = T_evap_min (bisection; only active at low fan speed and high load).
+temperature would fall below T_evap_min. Here T_r is held at T_evap_min and the capacity is what
+the coil takes at that temperature (only active at low fan speed and high load).
+
+Indoor fan: P = P_0 + (P_nom - P_0) f^3. The cubic part is the affinity law of a fan on a fixed
+air path; P_0 is the speed-independent part (motor and drive losses, control electronics),
+which dominates at low speed (decision D31).
 
 Water held on the coil (mechanism as described by Henderson & Rengarajan, 1996).
 State M_c, kg, capacity M_max:
@@ -66,6 +101,8 @@ import math
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import NamedTuple
+
+from scipy.optimize import brentq
 
 from . import psychro
 
@@ -124,21 +161,23 @@ def _dew_point(W: float) -> float:
 
 @dataclass(frozen=True)
 class ACParams:
-    Q_rated: float = 2500.0          # total cooling capacity at rating conditions, W
-    EER_rated: float = 3.5           # Q_coil / P_el at rating conditions (fans included)
+    Q_rated: float = 2500.0          # total (air-side) cooling capacity at rating conditions, W
+    EER_rated: float = 3.5           # net EER at rating: (Q - P_fan_in) / P_el, fans included
     T_o_rated: float = 35.0          # outdoor, degC
     T_in_rated: float = 27.0         # return air dry bulb, degC
-    W_in_rated: float = 0.0114       # return air humidity ratio (about 19 degC wet bulb)
-    cap_slope: float = 0.01          # capacity loss per K of outdoor temperature above rating
+    W_in_rated: float = 0.0114       # return air humidity ratio (19.7 degC wet bulb)
+    cap_slope: float = 0.016         # compressor capacity loss per K outdoor, at fixed T_r (D30)
+    cap_slope_evap: float = 0.040    # capacity gain per K of evaporating temperature (D30)
     s_min: float = 0.3               # minimum compressor speed fraction
     f_min: float = 0.4               # minimum indoor fan fraction
     V_nom: float = 0.125             # indoor airflow at full fan, m3/s (450 m3/h)
-    BF_nom: float = 0.15             # coil bypass factor at full fan
+    BF_nom: float = 0.15             # air-side bypass factor at full fan
     UA_evap: float = 600.0           # refrigerant <-> coil surface, W/K
     UA_cond: float = 300.0           # refrigerant <-> outdoor air, W/K
     eta_low_speed: float = 0.25      # relative loss of cycle efficiency at s_min vs full speed
     dT_lift_min: float = 15.0        # minimum condensing - evaporating temperature difference, K
-    P_fan_in_nom: float = 25.0       # indoor fan at full speed, W (cubic in speed)
+    P_fan_in_nom: float = 25.0       # indoor fan at full speed, W
+    P_fan_in_base: float = 5.0       # speed-independent part of the indoor fan power, W (D31)
     P_fan_out: float = 40.0          # outdoor fan while the compressor runs, W
     T_evap_min: float = 0.5          # frost protection limit on evaporating temperature, degC
     tau_start: float = 60.0          # capacity ramp after a start, s (decision D9)
@@ -162,17 +201,30 @@ class CoilState(NamedTuple):
     P_el: float        # electrical power, W
     P_fan_in: float    # indoor fan power, W (ends up as heat in the room)
     COP: float         # Q_coil / P_comp (compressor only)
-    T_s: float         # coil surface temperature, degC
+    T_s: float         # mean coil surface temperature, degC
     T_out: float       # supply air, degC
     W_out: float       # supply air, kg/kg
-    wet: bool
+    wet_fraction: float  # wetted fraction of the coil surface, 0 (dry) to 1
     dM_coil: float     # rate of change of the water held on the coil, kg/s
     m_drain: float     # condensate leaving through the drain, kg/s
 
 
 OFF_STATE = CoilState(Q_sens=0.0, m_lat=0.0, Q_coil=0.0, P_el=0.0, P_fan_in=0.0, COP=0.0,
-                      T_s=math.nan, T_out=math.nan, W_out=math.nan, wet=False,
+                      T_s=math.nan, T_out=math.nan, W_out=math.nan, wet_fraction=0.0,
                       dM_coil=0.0, m_drain=0.0)
+
+
+def net_cooling(st: CoilState, T_in: float) -> float:
+    """Cooling delivered to the room, W: sensible + latent minus the indoor fan heat."""
+    return st.Q_sens + st.m_lat * (H_FG0 + CP_V * T_in) - st.P_fan_in
+
+
+class CoilOutlet(NamedTuple):
+    Q: float           # air-side total capacity m (h_in - h_out), W
+    T_out: float
+    W_out: float
+    T_s: float         # mean surface temperature, degC
+    wet_fraction: float
 
 
 @dataclass(frozen=True)
@@ -181,64 +233,112 @@ class ACUnit:
 
     # -- coil -------------------------------------------------------------------------------
     def bypass_factor(self, f: float) -> float:
-        m = self.p.m_nom * f
-        return math.exp(-self.p.NTU_nom * (m / self.p.m_nom) ** -0.4)
+        """Air-side bypass factor exp(-NTU_a) at fan fraction f."""
+        return math.exp(-self.p.NTU_nom * f ** -0.4)
 
-    def coil(self, Q: float, f: float, T_in: float, W_in: float) -> tuple:
-        """Outlet state for total capacity Q (W) at fan fraction f.
+    def fan_power(self, f: float) -> float:
+        """Indoor fan electrical power at fan fraction f > 0, W."""
+        p = self.p
+        return p.P_fan_in_base + (p.P_fan_in_nom - p.P_fan_in_base) * f ** 3
 
-        Returns (T_s, T_out, W_out, wet, m_air).
-        """
-        m = self.p.m_nom * f
-        BF = self.bypass_factor(f)
+    def _coil(self, T_r: float, f: float, T_in: float, W_in: float, outlet: bool):
+        """Coil with refrigerant at T_r. Returns Q (W) or, with ``outlet``, a CoilOutlet."""
+        p = self.p
+        m = p.m_nom * f
         cpm = CP_A + CP_V * W_in
-        T_s = T_in - Q / (m * cpm * (1.0 - BF))
-        if T_s >= _dew_point(W_in):
-            return T_s, T_s + BF * (T_in - T_s), W_in, False, m
-        h_in = _h(T_in, W_in)
-        h_s = h_in - Q / (m * (1.0 - BF))
-        T_s = T_from_h_sat(h_s, T_guess=T_s)
-        W_s = _W_sat(T_s)
-        W_out = W_s + BF * (W_in - W_s)
-        h_out = h_s + BF * (h_in - h_s)
-        T_out = (h_out - H_FG0 * W_out) / (CP_A + CP_V * W_out)
+        NTU_a = p.NTU_nom * f ** -0.4
+        UA_a = NTU_a * m * cpm
+        UA_r = p.UA_evap
+        r = UA_a / (UA_a + UA_r)
+        NTU_o = NTU_a * UA_r / (UA_a + UA_r)
+        dT_in = T_in - T_r
+        T_dp = _dew_point(W_in)
+        # dry fraction x_d: the surface reaches the dew point where the air is at T_b
+        if T_dp <= T_r or dT_in <= 0.0:
+            x_d = 1.0
+        else:
+            T_b = T_r + (T_dp - T_r) / r
+            x_d = 0.0 if T_b >= T_in else min(math.log(dT_in / (T_b - T_r)) / NTU_o, 1.0)
+        T_b = T_r + dT_in * math.exp(-NTU_o * x_d)        # air at the end of the dry part
+        wet = 1.0 - x_d
+        if wet <= 0.0:
+            Q = m * cpm * (T_in - T_b)
+            if not outlet:
+                return Q
+            return CoilOutlet(Q, T_b, W_in, T_r + Q / UA_r, 0.0)
+        # wet part: enthalpy-based conductance with the secant slope of h_sat
+        T_up = min(T_dp, T_r + r * dT_in)                 # surface where the wet part starts
+        h_r, dh_r = _h_sat_and_slope(T_r)
+        if T_up - T_r > 1e-6:
+            c_s = (_h_sat_and_slope(T_up)[0] - h_r) / (T_up - T_r)
+        else:
+            c_s = dh_r
+        UA_h = 1.0 / (c_s / UA_r + cpm / UA_a)
+        h_b = _h(T_b, W_in)
+        h_out = h_r + (h_b - h_r) * math.exp(-UA_h * wet / m)
+        Q = m * (_h(T_in, W_in) - h_out)
+        if not outlet:
+            return Q
+        eta = 1.0 - math.exp(-NTU_a * wet)
+        if eta < 1e-9:
+            W_out = W_in
+            T_out = (h_out - H_FG0 * W_out) / (CP_A + CP_V * W_out)
+        else:
+            h_c = h_b - (h_b - h_out) / eta
+            T_c = T_from_h_sat(h_c, T_guess=T_r)
+            T_out = T_c + (T_b - T_c) * (1.0 - eta)
+            W_out = (h_out - CP_A * T_out) / (H_FG0 + CP_V * T_out)
+            if W_out > W_in:
+                W_out = W_in
+                T_out = (h_out - H_FG0 * W_out) / (CP_A + CP_V * W_out)
         if W_out > _W_sat(T_out):
-            # mixing line crosses the saturation curve near the surface: condense the excess
+            # outlet state beyond saturation: condense the excess at constant enthalpy
             T_out = T_from_h_sat(h_out, T_guess=T_out)
             W_out = _W_sat(T_out)
-        return T_s, T_out, W_out, True, m
+        return CoilOutlet(Q, T_out, W_out, T_r + Q / UA_r, wet)
+
+    def coil_at(self, T_r: float, f: float, T_in: float, W_in: float) -> CoilOutlet:
+        """Coil outlet with the refrigerant evaporating at T_r (degC), fan fraction f."""
+        return self._coil(T_r, f, T_in, W_in, True)
+
+    def T_evap(self, Q: float, f: float, T_in: float, W_in: float) -> float:
+        """Evaporating temperature at which the coil takes air-side capacity Q, degC."""
+        if Q <= 0.0:
+            return T_in
+        return brentq(lambda T: self._coil(T, f, T_in, W_in, False) - Q, T_in - 80.0, T_in,
+                      xtol=1e-12, rtol=1e-14)
 
     # -- capacity and cycle -----------------------------------------------------------------
     def capacity(self, s: float, T_o: float) -> float:
+        """Compressor capacity at the rated evaporating temperature, W."""
         return s * self.p.Q_rated * (1.0 - self.p.cap_slope * (T_o - self.p.T_o_rated))
 
-    def T_evap(self, Q: float, f: float, T_in: float, W_in: float) -> float:
-        """Evaporating temperature at air-side capacity Q, degC."""
-        return self.coil(Q, f, T_in, W_in)[0] - Q / self.p.UA_evap
+    def compressor_capacity(self, s: float, T_r: float, T_o: float) -> float:
+        """Capacity of the compressor at speed s with the refrigerant evaporating at T_r, W."""
+        return self.capacity(s, T_o) * (1.0 + self.p.cap_slope_evap * (T_r - self.T_r_rated))
 
-    def frost_limited(self, Q: float, f: float, T_in: float, W_in: float) -> float:
-        """Largest capacity <= Q with T_evap >= T_evap_min (T_evap falls monotonically with Q)."""
+    @cached_property
+    def T_r_rated(self) -> float:
+        """Evaporating temperature at rating conditions (full speed and fan), degC."""
+        p = self.p
+        return self.T_evap(p.Q_rated, 1.0, p.T_in_rated, p.W_in_rated)
+
+    def operating_T_r(self, s: float, f: float, T_in: float, W_in: float, T_o: float) -> float:
+        """Evaporating temperature where compressor and coil capacities balance, with frost
+        protection (T_r >= T_evap_min)."""
         T_min = self.p.T_evap_min
-        if self.T_evap(Q, f, T_in, W_in) >= T_min:
-            return Q
-        lo, hi = 0.0, Q
-        if self.T_evap(lo, f, T_in, W_in) <= T_min:
-            return 0.0
-        while hi - lo > 1e-6 * Q:
-            mid = 0.5 * (lo + hi)
-            if self.T_evap(mid, f, T_in, W_in) >= T_min:
-                lo = mid
-            else:
-                hi = mid
-        return lo
+        g = lambda T: self._coil(T, f, T_in, W_in, False) - self.compressor_capacity(s, T, T_o)
+        if T_min < T_in and g(T_min) <= 0.0:
+            return T_min                     # the compressor slows to hold T_evap_min
+        return brentq(g, T_in - 80.0, T_in, xtol=1e-12, rtol=1e-14)
 
     def eta_rel(self, s: float) -> float:
         """Cycle efficiency relative to full speed; compressor losses grow at low speed."""
         x = (1.0 - s) / (1.0 - self.p.s_min)
         return 1.0 - self.p.eta_low_speed * x * x
 
-    def _cop(self, eta: float, Q_coil: float, T_s: float, T_o: float) -> float:
-        T_ev = T_s - Q_coil / self.p.UA_evap + 273.15
+    def _cop(self, eta: float, Q_coil: float, T_r: float, T_o: float) -> float:
+        T_ev = T_r + 273.15
         a = Q_coil / self.p.UA_cond
         cop_floor = eta * T_ev / self.p.dT_lift_min          # COP with the minimum lift
         num, den = eta * T_ev - a, T_o + 273.15 - T_ev + a
@@ -252,26 +352,29 @@ class ACUnit:
 
     @cached_property
     def eta_full(self) -> float:
-        """Carnot fraction at full speed, calibrated to the rated EER (fans included)."""
+        """Carnot fraction at full speed, calibrated to the rated net EER (fans included)."""
         p = self.p
-        T_s, T_out, W_out, _, m = self.coil(p.Q_rated, 1.0, p.T_in_rated, p.W_in_rated)
-        m_lat = m * (p.W_in_rated - W_out)
-        Q_coil = p.Q_rated - m_lat * CP_W * T_s
-        P_comp = Q_coil / p.EER_rated - p.P_fan_in_nom - p.P_fan_out
+        T_r = self.T_r_rated
+        out = self.coil_at(T_r, 1.0, p.T_in_rated, p.W_in_rated)
+        m_lat = p.m_nom * (p.W_in_rated - out.W_out)
+        Q_coil = out.Q - m_lat * CP_W * out.T_s
+        P_fan = self.fan_power(1.0)
+        P_comp = (out.Q - P_fan) / p.EER_rated - P_fan - p.P_fan_out
         cop = Q_coil / P_comp
-        T_ev = T_s - Q_coil / p.UA_evap + 273.15
+        T_ev = T_r + 273.15
         a = Q_coil / p.UA_cond
         return (cop * (p.T_o_rated + 273.15 - T_ev + a) + a) / T_ev
 
     # -- full operating point ---------------------------------------------------------------
-    def streams(self, Q: float, f: float, T_in: float, W_in: float) -> tuple:
-        """(Q_sens, m_lat, Q_coil, T_s, T_out, W_out, wet) for total air-side capacity Q."""
-        T_s, T_out, W_out, wet, m = self.coil(Q, f, T_in, W_in)
-        m_lat = m * (W_in - W_out)
+    def streams(self, T_r: float, f: float, T_in: float, W_in: float) -> tuple:
+        """(Q_sens, m_lat, Q_coil, T_s, T_out, W_out, wet_fraction) with refrigerant at T_r."""
+        out = self.coil_at(T_r, f, T_in, W_in)
+        m = self.p.m_nom * f
+        m_lat = m * (W_in - out.W_out)
         Q_lat = m_lat * (H_FG0 + CP_V * T_in)
-        Q_sens = m * (CP_A + CP_V * W_out) * (T_in - T_out)
-        Q_coil = Q_sens + Q_lat - m_lat * CP_W * T_s
-        return Q_sens, m_lat, Q_coil, T_s, T_out, W_out, wet
+        Q_sens = m * (CP_A + CP_V * out.W_out) * (T_in - out.T_out)
+        Q_coil = Q_sens + Q_lat - m_lat * CP_W * out.T_s
+        return Q_sens, m_lat, Q_coil, out.T_s, out.T_out, out.W_out, out.wet_fraction
 
     def _drain_fraction(self, M_c: float) -> float:
         w = self.p.film_ramp * self.p.M_coil_max
@@ -286,7 +389,7 @@ class ACUnit:
         p = self.p
         f = min(max(f, p.f_min), 1.0)
         m = p.m_nom * f
-        P_fan_in = p.P_fan_in_nom * f ** 3
+        P_fan_in = self.fan_power(f)
         h_in = _h(T_in, W_in)
         T_wb = T_from_h_sat(h_in, T_guess=T_in - 5.0)
         W_out = W_in + (1.0 - self.bypass_factor(f)) * (_W_sat(T_wb) - W_in) \
@@ -297,7 +400,7 @@ class ACUnit:
         # a wet coil sits at the wet-bulb temperature; a dry one at the return-air temperature
         T_surface = T_wb if M_c > 0.0 else T_in
         return CoilState(Q_sens, m_lat, 0.0, P_fan_in, P_fan_in, 0.0, T_surface, T_out, W_out,
-                         M_c > 0.0, dM_coil=m_lat, m_drain=0.0)
+                         1.0 if M_c > 0.0 else 0.0, dM_coil=m_lat, m_drain=0.0)
 
     def operate(self, s: float, f: float, T_in: float, W_in: float, T_o: float,
                 ramp: float = 1.0, M_c: float | None = None) -> CoilState:
@@ -314,14 +417,17 @@ class ACUnit:
             return self.fan_only(f, T_in, W_in, 0.0 if M_c is None else M_c)
         s = min(max(s, p.s_min), 1.0)
         f = min(max(f, p.f_min), 1.0)
-        Q_req = self.frost_limited(self.capacity(s, T_o), f, T_in, W_in)
-        req = self.streams(Q_req, f, T_in, W_in)
-        out = req if ramp >= 1.0 else self.streams(Q_req * ramp, f, T_in, W_in)
+        T_r_req = self.operating_T_r(s, f, T_in, W_in, T_o)
+        req = self.streams(T_r_req, f, T_in, W_in)
+        if ramp >= 1.0:
+            out = req
+        else:
+            Q_req = self._coil(T_r_req, f, T_in, W_in, False)
+            out = self.streams(self.T_evap(Q_req * ramp, f, T_in, W_in), f, T_in, W_in)
         Q_sens, m_lat, Q_coil, T_s, T_out, W_out, wet = out
-        Q_coil_req, T_s_req = req[2], req[3]
-        cop = self._cop(self.eta_full * self.eta_rel(s), Q_coil_req, T_s_req, T_o)
-        P_fan_in = p.P_fan_in_nom * f ** 3
-        P_el = Q_coil_req / cop + P_fan_in + p.P_fan_out
+        cop = self._cop(self.eta_full * self.eta_rel(s), req[2], T_r_req, T_o)
+        P_fan_in = self.fan_power(f)
+        P_el = req[2] / cop + P_fan_in + p.P_fan_out
         g = 1.0 if M_c is None else self._drain_fraction(M_c)
         return CoilState(Q_sens, m_lat, Q_coil, P_el, P_fan_in, cop, T_s, T_out, W_out, wet,
                          dM_coil=m_lat * (1.0 - g), m_drain=m_lat * g)

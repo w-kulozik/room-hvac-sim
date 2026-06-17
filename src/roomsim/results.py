@@ -14,7 +14,8 @@ from .plant import (IDX_CO2, IDX_PHI_B, IDX_TA, IDX_TM, IDX_W, Fluxes, stored_co
 
 
 # Unit operating-point quantities logged at every grid point
-UNIT_FIELDS = ("Q_sens", "m_lat", "Q_coil", "P_el", "COP", "T_s", "T_out", "m_drain")
+UNIT_FIELDS = ("Q_sens", "m_lat", "Q_coil", "P_el", "P_fan_in", "COP", "T_s", "T_out",
+               "wet_fraction", "m_drain")
 
 
 @dataclass

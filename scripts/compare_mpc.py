@@ -65,7 +65,7 @@ def main() -> None:
     table = "\n".join(lines)
     print(f"Three days after {WARMUP_DAYS} warm-up days; tariff {tou.offpeak:.2f} / {tou.peak:.2f} EUR/kWh\n")
     print(table)
-    (FIG / "mpc_comparison.md").write_text(table + "\n", encoding="utf-8")
+    (FIG / "mpc_comparison.md").write_text(table + "\n", encoding="utf-8", newline="\n")
 
     shown = ("PI, set-back, start 6:00", "MPC", "MPC, time-of-use tariff")
     last_day = {n: results[n].window((WARMUP_DAYS + DAYS - 1) * DAY) for n in shown}

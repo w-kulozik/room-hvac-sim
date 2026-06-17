@@ -104,10 +104,13 @@ def test_h2_tracks_the_coil_set_point_on_the_real_coil():
     T_a, W = 25.0, 0.0120
     st = UNIT.operate(0.5, 1.0, T_a, W, 32.0)
     for k in range(40):
-        c.T_s_set = 13.0
-        c.outer.I = 7.0                                   # hold the outer output at 20 - 7 = 13
-        cmd = c.step(60.0 * k, y(T_a=T_a, RH=0.6, T_coil=st.T_s))
+        c.outer.I = 7.0                                   # RH at its set point: target 20 - 7 = 13
+        cmd = c.step(60.0 * k, y(T_a=T_a, RH=0.55, T_coil=st.T_s))
         st = UNIT.operate(cmd[0], cmd[1], T_a, W, 32.0)
+    assert c.T_s_set == pytest.approx(13.0)
+    # the target is reachable: between the coil temperatures at minimum and at full fan
+    T_s_min_fan = UNIT.operate(0.5, F_MIN, T_a, W, 32.0).T_s
+    assert T_s_min_fan < 13.0 < UNIT.operate(0.5, 1.0, T_a, W, 32.0).T_s
     assert st.T_s == pytest.approx(c.T_s_set, abs=0.05)
 
 

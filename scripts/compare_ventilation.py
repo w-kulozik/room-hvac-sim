@@ -12,6 +12,7 @@ day (D27). A last, exploratory table varies the night-flush flow.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -93,8 +94,9 @@ def main() -> None:
         r = run(SummerScenario(), NightFlush(DemandControlledPI(P), outdoor=S.T_o, V_flush=V))
         out.append(row(f"V3 with flush at {V * 3600:.0f} m³/h", r))
     text = "\n".join(out)
+    sys.stdout.reconfigure(encoding="utf-8")    # the table is not cp1252 (subscript 2 in CO2)
     print(text)
-    (FIG / "ventilation_comparison.md").write_text(text + "\n", encoding="utf-8")
+    (FIG / "ventilation_comparison.md").write_text(text + "\n", encoding="utf-8", newline="\n")
 
     shown = ("V0 fixed schedule", "V1 demand-controlled PI", "V2 staged levels", "V3 V1 + night flush")
     last_day = {n: last_results[n].window((WARMUP_DAYS + DAYS - 1) * DAY) for n in shown}

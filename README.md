@@ -6,7 +6,8 @@ against analytical solutions and used to test and compare air-conditioning contr
 - **The room:** an air node, a thermal-mass node, a moisture balance with buffering by the
   interior surfaces, a CO2 balance and proper psychrometrics.
 - **What drives it:** outdoor weather, sun through a window, and occupants coming and going.
-- **The unit model:** the cooling coil (dry and wet), the water held on the coil, frost
+- **The unit model:** the cooling coil (dry, partially wet or wet), capacity that falls with
+  airflow and evaporating temperature, the water held on the coil, frost
   protection, part-load efficiency and start-up losses.
 - **The controllers:** discrete, as in a real unit. They sample the sensors every minute and
   hold their commands until the next sample.
@@ -17,25 +18,32 @@ against analytical solutions and used to test and compare air-conditioning contr
 
 All results are from simulation of one synthetic summer day, repeated (see Limits below).
 
-1. **A proportional-integral (PI) controller uses 40 % less energy than an on/off thermostat
-   but loses humidity control.**
-   - The unit is oversized for the room, so the PI runs it at minimum speed with a dry coil.
-   - Mean indoor relative humidity while occupied rises from 49 % to 64 %.
+1. **A proportional-integral (PI) controller uses 30 % less energy than an on/off thermostat
+   but loses most of the humidity control.**
+   - The unit is oversized for the room, so the PI runs it at minimum speed, where the coil is
+     only partly wet (at most about half of its surface).
+   - Mean indoor relative humidity while occupied rises from 50 % to 62 %.
 2. **Slowing the indoor fan restores dehumidification.** The humidity returns to its 55 % set
-   point for 10 % more energy than the plain PI, and still 34 % less than on/off. A cascade
-   through the coil temperature holds it a little more steadily.
-3. **Model predictive control (MPC) saves little against a well-scheduled PI:** 3 % against a
-   PI with set-back.
-   - A time-of-use tariff does not pay off here once the cycle efficiency is modelled with a
-     realistic minimum lift.
-   - An earlier "10 % saving" was traced to an unbounded efficiency at night and withdrawn.
+   point for 9 % more energy than the plain PI, and still 23-24 % less than on/off. This includes
+   the capacity the unit loses at low airflow. A cascade through the coil temperature holds the
+   humidity a little more steadily.
+3. **Model predictive control (MPC) saves little energy against a well-scheduled PI:** 1.6 %
+   against a PI with set-back starting at 6:00, and nothing against one starting at 7:00.
+   - The nominal MPC has a perfect weather forecast and exact model parameters; with 20 %
+     parameter errors its energy rises by 1.6 %, with a biased forecast by less than 1 %.
+   - With a time-of-use tariff (peak four times off-peak) it costs 7 % less than the set-back
+     PI, for 16 % more energy. This depends on the night-time efficiency of the unit, which the
+     model bounds conservatively. An earlier "10 % saving" was traced to an unbounded
+     efficiency at night and withdrawn.
 4. **Demand-controlled ventilation pays only when occupancy varies.** A fixed flow sized for
-   the peak needs 78 % more air and 8 % more energy. Night flush pays only at about half the
+   the peak needs 78 % more air and 7 % more energy. Night flush pays only at about half the
    design flow.
 5. **The numerics are verified.**
-   - Fourth-order convergence, also in closed loop with the unit.
+   - Fourth-order convergence with the unit inside the integrator, with a constant command and
+     in closed loop with the sampled PI, while the coil stays in one regime; second order on
+     trajectories that cross from a fully wet into a partially wet coil.
    - Energy, water and CO2 balances closed to round-off.
-   - 151 automated tests.
+   - 164 automated tests.
 
 ## Limits
 
@@ -45,6 +53,10 @@ All results are from simulation of one synthetic summer day, repeated (see Limit
   specific building or product.
 - The findings are comparisons between controllers on the same model. Absolute energies
   depend on parameters such as the minimum condensing lift and the start-up time constant.
+- Against the published data of a current 2.5 kW inverter split, the model's rated capacity is
+  3 % lower and its minimum capacity 24 % lower; its EER is 23 % lower at rating and much lower
+  in mild weather
+  ([docs/results.md](docs/results.md#comparison-with-a-real-unit)).
 - The full list is at the end of [docs/decisions.md](docs/decisions.md).
 
 ## Documentation
@@ -55,14 +67,15 @@ Read in this order:
 2. [docs/results.md](docs/results.md): every study with its table and figure. The findings
    above come from here.
 3. [docs/verification.md](docs/verification.md): what is checked and how accurately.
-4. [docs/decisions.md](docs/decisions.md): the log of modelling and study decisions (D1-D28).
+4. [docs/decisions.md](docs/decisions.md): the log of modelling and study decisions (D1-D34).
    It records which ones were fixed before running a study, the corrections made after the
-   end-of-project check, and the known limitations.
-5. [docs/specification.md](docs/specification.md): the full specification and its
+   end-of-project check and after an external review, and the known limitations.
+5. [docs/faq.md](docs/faq.md): questions a reviewer may ask, with short answers.
+6. [docs/specification.md](docs/specification.md): the full specification and its
    revisions.
-6. [tests/README.md](tests/README.md): how test tolerances are chosen.
-7. [docs/references.md](docs/references.md): the publications cited, what was read in each and
-   what is taken from it.
+7. [tests/README.md](tests/README.md): how test tolerances are chosen.
+8. [docs/references.md](docs/references.md): the publications and data sources cited, what was
+   read in each and what is taken from it.
 
 ## Install and run
 
@@ -76,6 +89,7 @@ python scripts/compare_controllers.py
 python scripts/compare_humidity.py
 python scripts/compare_mpc.py
 python scripts/compare_ventilation.py
+python scripts/compare_rated.py
 ```
 
 Each script prints its table and writes its figures and its table to `figures/`.
@@ -88,7 +102,8 @@ src/roomsim/
   params.py        RoomParams dataclass, derived constants
   inputs.py        disturbance scenarios d(t), vectorised for forecasts
   plant.py         rhs(t, x, u, d, p), flux breakdown, Jacobian, sensors
-  ac_unit.py       inverter split unit: coil, cycle, frost protection, start-up, coil water
+  ac_unit.py       inverter split unit: partially wet coil, capacity, cycle, frost protection,
+                   fans, start-up, coil water
   integrators.py   Euler, RK4 (classical fourth-order Runge-Kutta), Euler stability limit
   simulate.py      fixed-step loop, discrete controller with zero-order hold, periodic shooting
   results.py       SimResult: states, psychrometrics, balance residuals
@@ -103,8 +118,8 @@ src/roomsim/
                    humidity-aware fan control (direct and cascade), economic MPC,
                    ventilation strategies (scheduled, CO2 PI, staged, night flush)
 scripts/           one script per study (see Install and run)
-tests/             151 tests; tolerance rules in tests/README.md and tests/criteria.py
-docs/              model, results, verification, decisions, specification, references
+tests/             164 tests; tolerance rules in tests/README.md and tests/criteria.py
+docs/              model, results, verification, decisions, FAQ, specification, references
 figures/           figures and result tables written by the scripts
 ```
 

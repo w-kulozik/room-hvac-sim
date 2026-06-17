@@ -90,25 +90,37 @@ state of that stage.
 
 Abbreviations: BF, bypass factor; NTU, number of transfer units; UA, heat-exchanger
 conductance; COP, coefficient of performance of the compressor; EER, energy efficiency ratio of
-the whole unit; SHR, sensible heat ratio.
+the whole unit, net of the indoor fan heat; SHR, sensible heat ratio.
 
 | Item | Model |
 |---|---|
-| Coil | bypass factor BF = exp(−NTU), NTU ∝ ṁ^−0.4; BF = 0.15 at 450 m³/h |
-| Dry / wet | dry if the coil surface is above the inlet dew point (closed form); wet: Newton on h_sat(T_s); continuous at the switch |
+| Coil **[rev]** | refrigerant at uniform T_evap; air-side conductance (BF = exp(−NTU), NTU ∝ ṁ^−0.4, BF = 0.15 at 450 m³/h) in series with UA_evap = 600 W/K |
+| Partially wet **[rev]** | dry from the air inlet to where the surface reaches the inlet dew point, wet after it; closed forms in both parts; wetted fraction continuous from 0 to 1 (D29) |
 | Split | Q_sens = ṁ(c_pa + c_pv W_out)(T_in − T_out), Q_lat = ṁ_lat(h_fg0 + c_pv T_in): their sum equals ṁ Δh exactly |
 | Outlet | brought to saturation at constant enthalpy if the mixing line would cross it |
-| Capacity | 2.5 kW at 35 °C outdoor, changing linearly by 1 % per K of outdoor temperature (lower above 35 °C, higher below) |
-| Frost protection | capacity capped so that the evaporating temperature stays ≥ 0.5 °C |
-| Cycle | COP = η(s) T_evap/(T_cond − T_evap) with absolute temperatures, T_evap = T_s − Q/UA_evap, T_cond = max(T_o + Q_cond/UA_cond, T_evap + 15 K) with Q_cond = Q_coil (1 + 1/COP), closed form; η calibrated to EER 3.5 (fans included) at 35 °C / 27 °C / W = 0.0114 |
+| Capacity **[rev]** | s × 2.5 kW × [1 + 0.040 (T_evap − T_evap,rated)] × [1 − 0.016 (T_o − 35 °C)], solved with the coil for T_evap (D30) |
+| Frost protection | evaporating temperature held at ≥ 0.5 °C; the capacity is what the coil takes at that temperature |
+| Cycle | COP = η(s) T_evap/(T_cond − T_evap) with absolute temperatures, T_cond = max(T_o + Q_cond/UA_cond, T_evap + 15 K) with Q_cond = Q_coil (1 + 1/COP), closed form; η calibrated to a net EER of 3.5 (fans included, indoor fan heat subtracted from the capacity) at 35 °C / 27 °C / W = 0.0114 **[rev]** |
+| Indoor fan **[rev]** | 5 W + 20 W × f³ (D31) |
 | Start-up | delivered capacity × (1 − e^(−t_on/60 s)); compressor power that of the steady operating point at the commanded speed. Choice of 60 s: decision D9 in [decisions.md](decisions.md) |
 
-At rating conditions: SHR 0.73, coil surface 13 °C, supply 15 °C. Lower fan speed gives a colder
-coil, more dehumidification and a lower COP; part load raises the EER (3.5 → 4.0 at 30 %).
+At rating conditions: SHR 0.73, mean coil surface 13.4 °C, supply 15.1 °C. Lower fan speed gives
+a colder coil, more dehumidification, less capacity and a lower COP; at 30 % speed under rating
+conditions the net EER is 3.8.
 
-**Coupling accuracy.** With the unit evaluated at the stage states the closed loop keeps
-fourth order (measured 3.9). Evaluating the unit once per sample and holding Q_sens gives first
-order (1.1): at Δt = 60 s the error is 2·10⁻⁴ K instead of 1·10⁻¹⁰ K.
+*Reason for the revisions [rev]:* an external review pointed out that the uniform-surface coil
+was either completely dry or completely wet, that the capacity did not depend on airflow, that
+the fan power at low speed was too small, and that the EER counted the indoor fan heat as
+cooling. Decisions D29-D32 in [decisions.md](decisions.md).
+
+**Coupling accuracy [rev].** With the unit evaluated at the stage states, RK4 keeps fourth order:
+measured 4.05 with a constant command and 4.02 in closed loop with the PI sampled every 60 s, as
+long as the coil stays in one regime and no switching decision changes with the step. A
+trajectory that crosses from a fully wet into a partially wet coil gives order 2.10 (the coil
+output has a kink there), with an error of 4·10⁻¹⁰ K at Δt = 60 s. Evaluating the unit once per
+sample and holding Q_sens gives first order (1.13): at Δt = 60 s the error is 1·10⁻³ K instead of
+5·10⁻¹¹ K. The first version of this paragraph said "the closed loop keeps fourth order
+(measured 3.9)"; that measurement used a constant command (decision D8).
 
 ## 3. Psychrometrics (p = 101 325 Pa)
 

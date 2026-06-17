@@ -51,28 +51,36 @@ apparent room moisture ≈ 15 000 s (twice the 7 200 s of the air alone).
 
 ## Air-conditioning unit
 
-Inverter split unit, 2.5 kW at 35 °C outdoor, energy efficiency ratio (EER) 3.5 at rating
-conditions. The controller sends compressor speed s (0 or 0.3-1), indoor fan speed f and
-ventilation flow; the unit converts them into Q_hvac_sens and ṁ_hvac_lat at every Runge-Kutta
-stage.
+Inverter split unit, 2.5 kW at 35 °C outdoor, net energy efficiency ratio (EER) 3.5 at rating
+conditions. Net means that the heat of the indoor fan, which stays in the room, is subtracted
+from the coil capacity; the electrical power includes both fans. Every EER in the documentation
+is net in this sense. The controller sends compressor speed s (0 or 0.3-1), indoor fan speed f
+and ventilation flow; the unit converts them into Q_hvac_sens and ṁ_hvac_lat at every
+Runge-Kutta stage.
 
 | Item | Model |
 |---|---|
-| Coil | bypass factor / apparatus dew point, BF = exp(−NTU) = 0.15 at 450 m³/h, NTU ∝ ṁ^-0.4 |
-| Dry / wet coil | closed form when dry; Newton on the saturation enthalpy when wet; continuous at the switch |
+| Coil | refrigerant at a uniform evaporating temperature T_evap; air-side conductance (bypass factor exp(−NTU) = 0.15 at 450 m³/h, NTU ∝ ṁ^-0.4) in series with a refrigerant-side conductance of 600 W/K |
+| Partially wet coil | the surface is warmest where the air enters; dry up to the point where it reaches the dew point of the entering air, wet after it (decision D29). Both parts in closed form; the wetted fraction goes continuously from 0 to 1 |
 | Sensible / latent split | exact for the enthalpy definition: Q_sens + Q_lat = ṁ Δh to round-off |
-| Capacity | 2.5 kW at 35 °C outdoor, changing by 1 % per K of outdoor temperature (lower when warmer) |
-| Cycle | Carnot fraction with finite-UA evaporator and condenser, closed form, calibrated to the rated EER; condensing temperature at least 15 K above evaporating (head-pressure control) |
-| Frost protection | capacity capped so the evaporating temperature stays ≥ 0.5 °C |
+| Capacity | 2.5 kW at rating; +4 % per K of evaporating temperature and −1.6 % per K of outdoor temperature at fixed evaporating temperature, both fitted so that the unit, coil included, has the slopes of the EnergyPlus example curve WindACCoolCapFT at rating: +3.6 % per K of entering wet bulb and −1.1 % per K of outdoor temperature at fixed entering air (D30). Less airflow lowers T_evap and so the capacity |
+| Cycle | Carnot fraction with a finite-UA condenser, closed form, calibrated to the rated net EER; condensing temperature at least 15 K above evaporating (head-pressure control) |
+| Frost protection | evaporating temperature held at ≥ 0.5 °C, with the capacity the coil takes at that temperature |
+| Indoor fan | 25 W at full speed: 5 W independent of speed plus 20 W following the cube of the speed (D31) |
 | Start-up | capacity ramps with a 60 s time constant while the compressor already draws the power of the steady operating point |
 | Coil water | condensate wets the coil (0.25 kg) before it drains; re-evaporates with the fan on and the compressor off |
 
 NTU is the number of transfer units of the coil, UA a heat-exchanger conductance, and the
 coefficient of performance (COP) the cooling per unit of compressor power.
 
-At rating conditions the sensible heat ratio is 0.73, the coil surface 13 °C and the supply
-air 15 °C. Lower fan speed gives a colder coil, more dehumidification and a lower COP; part load
-raises the EER to 4.0 at minimum speed.
+At rating conditions the sensible heat ratio is 0.73, the mean coil surface 13.4 °C, the
+evaporating temperature 9.2 °C and the supply air 15.1 °C. Lower fan speed gives a colder coil,
+more dehumidification, less capacity and a lower COP: at rating conditions 70 % airflow gives
+6.7 % less capacity, close to the 6 % of the EnergyPlus example curve WindACCoolCapFFF. At
+minimum speed under rating conditions the net EER is 3.8.
+
+The rated and part-load points are compared with the published data of a real 2.5 kW inverter
+split in [results.md](results.md#comparison-with-a-real-unit).
 
 The ventilation fan is modelled separately with the affinity law P = P_d (V/V_d)³, 30 W at
 108 m³/h (decision D23 in [decisions.md](decisions.md)).

@@ -94,7 +94,8 @@ def main() -> None:
     print(table)
     print("\nControllers tuned for the nominal unit, run on a different one\n")
     print(robustness)
-    (FIG / "humidity_control.md").write_text(table + "\n\n" + robustness + "\n", encoding="utf-8")
+    (FIG / "humidity_control.md").write_text(table + "\n\n" + robustness + "\n", encoding="utf-8",
+                                             newline="\n")
 
     last_day = {n: r.window((WARMUP_DAYS + DAYS - 1) * DAY) for n, r in results.items()}
     plot_humidity_day(last_day, RH_SET, FIG / "humidity_control.png")

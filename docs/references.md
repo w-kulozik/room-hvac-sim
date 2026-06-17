@@ -66,3 +66,62 @@ taken from it. Nothing else in the project relies on these sources.
    - Used: the back-calculation anti-windup scheme, and its advice that the reset gain be a
      fraction of 1/T_i so that measurement noise does not reset the integrator. The tracking
      time T_i/2 used here is not taken from it (decision D12).
+
+## Coil, capacity and published data of a real unit
+
+9. U.S. Department of Energy. *EnergyPlus Version 9.6 Engineering Reference*, chapter "Coils".
+   <https://bigladdersoftware.com/epx/docs/9-6/engineering-reference/coils.html>, accessed
+   11 October 2026.
+   - Read: section "Single-Speed Electric DX Air Cooling Coil" (Model Description; Dry Coil
+     Conditions) and section "Chilled-Water-Based Air Cooling Coil (Coil:Cooling:Water)"
+     (Coil Completely Dry, Completely Wet and Part Wet Part Dry Calculations).
+   - Used: for the partially wet coil (decision D29), the structure of the part-wet, part-dry
+     calculation: the wet/dry boundary where the surface reaches the dew point of the air, the
+     enthalpy-based conductance 1/(c_p,sat/UA_internal + c_p/UA_external) of the wet part, and the
+     outlet state from an effective condensing surface with effectiveness 1 − exp(−UA_external/
+     (ṁ c_p)). For the capacity (D30), the form of the DX coil model: rated capacity times a
+     function of entering wet bulb and outdoor dry bulb and a function of the flow fraction. The
+     EnergyPlus water coil iterates on a water temperature that varies along the coil; the
+     closed forms here follow from the uniform refrigerant temperature and are this project's
+     derivation.
+10. EnergyPlus 9.6.0 example input file `testfiles/WindACAuto.idf`.
+    <https://raw.githubusercontent.com/NREL/EnergyPlus/v9.6.0/testfiles/WindACAuto.idf>,
+    accessed 11 October 2026. The same coefficients of WindACCoolCapFT appear as the
+    Curve:Biquadratic example in the Input Output Reference, group "Performance Curves"
+    (<https://bigladdersoftware.com/epx/docs/9-6/input-output-reference/group-performance-curves.html>).
+    - Read: the curve objects WindACCoolCapFT, WindACCoolCapFFF, WindACEIRFT, WindACEIRFFF and
+      WindACPLFFPLR, and the Coil:Cooling:DX:SingleSpeed objects that use them.
+    - Used: WindACCoolCapFT (biquadratic in entering wet bulb and outdoor dry bulb,
+      coefficients 0.942587793, 0.009543347, 0.000683770, −0.011042676, 0.000005249,
+      −0.000009720) for the capacity slopes of D30; WindACCoolCapFFF (0.8 + 0.2 ff, stated for
+      0.5-1.5) as the comparison for the flow dependence. These are example curves of a
+      fixed-speed window unit.
+11. Daikin Europe N.V. *RXM-R Technical data book*, EEDEN20. Read in a copy hosted by a reseller:
+    <https://daichi.ru/upload/iblock/3c5/zzgxi8dx3mhawwwzlzisk5ek6rukjysw/RXM-R_EEDEN20_Data%20books_English.pdf>,
+    accessed 11 October 2026.
+    - Read: pages 19-21 (specifications of FTXM25R + RXM25R), page 27 (rating conditions) and
+      page 28 (electrical data), as text extracted from the PDF.
+    - Used: for FTXM25R + RXM25R in cooling, capacity 1.30 / 2.50 / 3.20 kW (minimum / nominal /
+      maximum), nominal power input 0.56 kW, EER 4.50, SEER 8.65, power in thermostat-off mode
+      6 W, and the declared part-load points A-D (capacity 2.50, 1.85, 1.19, 1.17 kW; EER 4.50,
+      6.52, 10.17, 16.51 at 35, 30, 25, 20 °C outdoors). Rating conditions 27 °C dry bulb /
+      19 °C wet bulb indoors, 35 °C outdoors, 5 m of piping. The extracted table interleaves two
+      variants of each indoor unit; at points B and C the two variants differ in the second
+      decimal (6.52 or 6.54; 10.17 or 10.14), and the first value is used.
+12. Daikin Europe N.V. *Wandgerät Klimatisierung, Technische Daten, FTXM-R*, EEDDE22 (German).
+    Read in a copy hosted by a reseller:
+    <https://www.klimaanlagen-heizungen.de/media/pdf/91/75/08/Daikin-Perfera-Wandgeraet-FTXM-Datenblatt.pdf>,
+    accessed 11 October 2026.
+    - Read: page 6 (printed page number; page 3 of the PDF file), specifications of the indoor
+      units, as text extracted from the PDF.
+    - Used: for FTXM25R, power input in nominal cooling 0.025 kW; airflow in cooling 10.5 / 7.6 /
+      5.7 / 4.1 m³/min (high / medium / low / quiet); fan motor output 22 W (decision D31 and the
+      comparison in [results.md](results.md#comparison-with-a-real-unit)).
+
+## Classification
+
+13. Cooperative Patent Classification, scheme F24F, version 2026.08.
+    <https://www.cooperativepatentclassification.org/sites/default/files/cpc/scheme/F/scheme-F24F.pdf>,
+    accessed 11 October 2026.
+    - Read: groups F24F 3/14-3/1405, 11/00-11/89 and the indexing codes F24F 2110/00-2140/60.
+    - Used: the group titles in [faq.md](faq.md), question 5.

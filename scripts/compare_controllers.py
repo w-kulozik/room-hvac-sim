@@ -57,7 +57,7 @@ def main() -> None:
     table = "\n".join(lines)
     print(f"Three summer days after {WARMUP_DAYS} warm-up days, set point {T_SET} °C\n")
     print(table)
-    (FIG / "controller_comparison.md").write_text(table + "\n", encoding="utf-8")
+    (FIG / "controller_comparison.md").write_text(table + "\n", encoding="utf-8", newline="\n")
 
     last_day = {n: r.window((WARMUP_DAYS + DAYS - 1) * DAY) for n, r in results.items()}
     plot_controller_day(last_day, T_SET, FIG / "controllers_day.png")

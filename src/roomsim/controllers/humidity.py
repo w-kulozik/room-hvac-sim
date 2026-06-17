@@ -2,9 +2,9 @@
 
 The compressor stays under the temperature PI (with its low-load handler). The indoor fan is
 the dehumidification actuator: less airflow means a colder coil surface, more condensation and a
-lower sensible heat ratio, at a small cost in efficiency. At minimum compressor speed, going from
-full to 40 % fan takes the coil from about 19 degC (dry) to 15 degC (wet), SHR 1.00 -> 0.75
-(room at 25 degC and 60 % RH, 32 degC outdoors).
+lower sensible heat ratio, at a small cost in efficiency and capacity. At minimum compressor speed,
+going from full to 40 % fan takes the mean coil surface from about 17.8 degC (dry) to 14.5 degC
+(wet), SHR 1.00 -> 0.70, with 10 % less capacity (room at 25 degC and 60 % RH, 32 degC outdoors).
 
 H1  FanHumidityPI: one PI on relative humidity acts directly on the fan speed.
         d = PI(RH - RH_set) in [0, 1],   f = 1 - (1 - f_min) d

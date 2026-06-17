@@ -48,9 +48,10 @@ def make_pi_controller(kind: str, p: RoomParams, unit: ACUnit, Ts: float = 60.0,
     """PI with low-load handler 'hysteresis' (A) or 'sigma-delta' (C), SIMC-tuned.
 
     The sigma-delta time scale is chosen for an air-temperature ripple of ``ripple_K`` (peak to
-    peak). While cycling the unit runs at s_min with a dry coil, so the relevant capacity is the
-    sensible output per unit of demand at minimum speed, not at full speed (where the coil is wet
-    and part of the capacity is latent): using the latter underestimated the ripple by 1.5 times.
+    peak). While cycling the unit runs at s_min with a dry or partly wet coil, so the relevant
+    capacity is the sensible output per unit of demand at minimum speed, not at full speed (where
+    the coil is wet and part of the capacity is latent): using the latter underestimated the
+    ripple by 1.5 times.
     """
     Kp, Ti = room_pi_tuning(p, unit, Ts)
     guard = CompressorGuard(min_on, min_off)
