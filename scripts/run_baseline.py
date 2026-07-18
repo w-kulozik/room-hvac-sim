@@ -16,8 +16,13 @@ from roomsim import verification as v
 from roomsim.inputs import DAY, HOUR, SummerScenario
 from roomsim.params import RoomParams
 from roomsim.plant import equilibrium_state
-from roomsim.plotting import (apply_style, plot_convergence, plot_energy_balance,
-                              plot_humidity, plot_temperatures)
+from roomsim.plotting import (
+    apply_style,
+    plot_convergence,
+    plot_energy_balance,
+    plot_humidity,
+    plot_temperatures,
+)
 from roomsim.simulate import periodic_state, simulate
 
 FIG = Path(__file__).resolve().parents[1] / "figures"

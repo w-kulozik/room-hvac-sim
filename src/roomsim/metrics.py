@@ -56,7 +56,8 @@ def compute(r: SimResult, T_set: float, band: float = 1.0) -> Metrics:
 
 def low_load_ripples(r: SimResult, s_min: float) -> np.ndarray:
     """Peak-to-peak air temperature over each complete low-load cycle (start to next start,
-    compressor only at s_min or off), K."""
+    compressor only at s_min or off), K.
+    """
     s = r.unit.cmd[:-1, IDX_CMD_S]
     on = s > 0
     starts = np.flatnonzero(on[1:] & ~on[:-1]) + 1
@@ -70,6 +71,7 @@ def low_load_ripples(r: SimResult, s_min: float) -> np.ndarray:
 
 def energy_cost(r: SimResult, tariff) -> float:
     """Electricity cost over the result, EUR. Power at each grid point is taken as constant over
-    the following step (left rectangle; the 60 s step makes the error negligible)."""
+    the following step (left rectangle; the 60 s step makes the error negligible).
+    """
     P = r.unit.op["P_el"][:-1]
     return float(np.sum(P * tariff(r.t[:-1])) * r.dt / 3.6e6)

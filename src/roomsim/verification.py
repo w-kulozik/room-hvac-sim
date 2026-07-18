@@ -13,9 +13,8 @@ import numpy as np
 from . import psychro
 from .inputs import DAY, ConstantInputs, SummerScenario
 from .params import RoomParams
-from .plant import IDX_PHI_B, IDX_W, U_OFF, buffer_flux, equilibrium_state
+from .plant import equilibrium_state
 from .simulate import simulate
-
 
 # ---- steady state ------------------------------------------------------------------------
 

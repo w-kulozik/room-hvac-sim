@@ -3,17 +3,24 @@
 import numpy as np
 import pytest
 
+from criteria import CO2_EXCEEDANCE_H_PER_DAY, CO2_LIMIT
 from roomsim.ac_unit import ACUnit
-from roomsim.controllers import (CoilCascade, DemandControlledPI, NightFlush,
-                                  ScheduledVentilation, StagedVentilation, VentilationSchedule,
-                                  WithVentilation, dcv_tuning, make_pi_controller)
+from roomsim.controllers import (
+    CoilCascade,
+    DemandControlledPI,
+    NightFlush,
+    ScheduledVentilation,
+    StagedVentilation,
+    VentilationSchedule,
+    WithVentilation,
+    dcv_tuning,
+    make_pi_controller,
+)
 from roomsim.inputs import DAY, HOUR, ConstantInputs, SummerScenario
 from roomsim.params import RoomParams
 from roomsim.plant import IDX_V_VENT, equilibrium_state
 from roomsim.simulate import simulate
 from roomsim.ventilation import VentilationFan
-
-from criteria import CO2_EXCEEDANCE_H_PER_DAY, CO2_LIMIT
 
 P = RoomParams()
 UNIT = ACUnit()
@@ -49,7 +56,7 @@ class _FixedVent:
 def test_dcv_tuning_follows_the_linearised_co2_balance():
     Kp, Ti = dcv_tuning(P, C_set=900.0, n_people=2.0, tau_c=900.0, Ts=60.0)
     Q = 2 * P.co2_person * 1e6 / 480.0                       # total outdoor air at 900 ppm
-    assert Q == pytest.approx(0.02167, rel=1e-3)
+    assert pytest.approx(0.02167, rel=1e-3) == Q
     tau, K = P.volume / Q, 480.0 / Q
     assert Ti == pytest.approx(tau)                           # tau < 4 (tau_c + theta)
     assert Kp == pytest.approx(tau / (K * (900.0 + 30.0)))
@@ -61,7 +68,7 @@ def test_dcv_is_off_when_unoccupied_and_bounded_when_occupied():
     assert v.step(9 * HOUR, y(C=500.0)) == pytest.approx(v.V_min)
     for k in range(200):
         V = v.step(9 * HOUR + 60.0 * k, y(C=1600.0))
-    assert V == pytest.approx(v.V_max)
+    assert pytest.approx(v.V_max) == V
 
 
 def test_dcv_holds_the_co2_set_point_in_closed_loop():

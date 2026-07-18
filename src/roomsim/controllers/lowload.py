@@ -59,9 +59,9 @@ class HysteresisLowLoad:
             return 0.0, 0.0, True                         # waiting for the minimum stop time
         # low load: thermostatic cycling at s_min, integrator frozen
         self.cycling = True
-        if g.on and T <= T_set - self.dT_off and g.can_stop(t):
+        if g.on and T_set - self.dT_off >= T and g.can_stop(t):
             g.set(t, False)
-        elif not g.on and T >= T_set + self.dT_on and g.can_start(t):
+        elif not g.on and T_set + self.dT_on <= T and g.can_start(t):
             g.set(t, True)
         if v <= 0.0 and not g.on:
             # no demand at all: plain saturation at zero, let the integrator track it

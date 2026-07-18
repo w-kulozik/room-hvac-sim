@@ -15,8 +15,12 @@ from pathlib import Path
 
 from roomsim.ac_unit import ACUnit
 from roomsim.control_model import RCModel
-from roomsim.controllers import (ComfortSchedule, EconomicMPC, VentilationSchedule,
-                                 make_pi_controller)
+from roomsim.controllers import (
+    ComfortSchedule,
+    EconomicMPC,
+    VentilationSchedule,
+    make_pi_controller,
+)
 from roomsim.inputs import DAY, SummerScenario
 from roomsim.metrics import compute, energy_cost
 from roomsim.params import RoomParams

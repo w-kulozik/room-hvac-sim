@@ -1,12 +1,25 @@
 """Split air-conditioner model: energy identities, coil physics and performance trends."""
 
 import math
+
 import numpy as np
 import pytest
 
 from roomsim import psychro
-from roomsim.ac_unit import (CP_A, CP_V, CP_W, H_FG0, OFF_STATE, ACUnit, T_from_h_sat, _dew_point,
-                             _h, _h_sat_and_slope, _W_sat, net_cooling)
+from roomsim.ac_unit import (
+    CP_A,
+    CP_V,
+    CP_W,
+    H_FG0,
+    OFF_STATE,
+    ACUnit,
+    T_from_h_sat,
+    _dew_point,
+    _h,
+    _h_sat_and_slope,
+    _W_sat,
+    net_cooling,
+)
 
 U = ACUnit()
 R = U.p   # rating conditions
@@ -125,7 +138,7 @@ def test_partially_wet_coil_meets_both_limits_at_its_boundaries():
     for T_r, expect in ((T_first, (0.0, 0.0)), (T_all, (1.0, 1.0))):
         warm, cold = (U.coil_at(T_r + d, f, T_in, W_in) for d in (1e-7, -1e-7))
         assert (warm.wet_fraction, cold.wet_fraction) == pytest.approx(expect, abs=1e-5)
-        assert cold.Q == pytest.approx(warm.Q, rel=1e-6)
+        assert pytest.approx(warm.Q, rel=1e-6) == cold.Q
         assert cold.W_out == pytest.approx(warm.W_out, abs=1e-9)
         assert cold.T_out == pytest.approx(warm.T_out, abs=1e-5)
     assert U.coil_at(T_first + 1e-3, f, T_in, W_in).W_out == W_in       # still dry
@@ -137,7 +150,7 @@ def test_coil_outlet_is_physical(T_r):
     surface and outlet temperatures between the refrigerant and the inlet air."""
     T_in, W_in = 25.0, 0.0127
     out = U.coil_at(T_r, 1.0, T_in, W_in)
-    assert out.Q == pytest.approx(R.m_nom * (_h(T_in, W_in) - _h(out.T_out, out.W_out)), rel=1e-12)
+    assert pytest.approx(R.m_nom * (_h(T_in, W_in) - _h(out.T_out, out.W_out)), rel=1e-12) == out.Q
     assert out.W_out <= W_in and out.W_out <= _W_sat(out.T_out) * (1 + 1e-12)
     assert T_r < out.T_s < T_in and T_r < out.T_out < T_in
     assert 0.0 <= out.wet_fraction <= 1.0

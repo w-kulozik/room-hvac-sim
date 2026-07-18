@@ -36,7 +36,7 @@ class RCModel:
     p: RoomParams = field(default_factory=RoomParams)
 
     @classmethod
-    def mismatched(cls, p: RoomParams, scale: dict[str, float]) -> "RCModel":
+    def mismatched(cls, p: RoomParams, scale: dict[str, float]) -> RCModel:
         """Model built from parameters multiplied by the given factors, e.g. {'C_m': 1.2}."""
         return cls(replace(p, **{k: getattr(p, k) * v for k, v in scale.items()}))
 

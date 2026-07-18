@@ -6,7 +6,7 @@ verification tests measure the order of convergence as the step is halved.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 

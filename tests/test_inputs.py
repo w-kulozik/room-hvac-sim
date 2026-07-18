@@ -22,7 +22,7 @@ def test_outdoor_temperature_extremes_and_timing():
 def test_default_outdoor_humidity_ratio_is_constant():
     t = np.linspace(0, DAY, 97)
     W = S.W_o(t)
-    assert np.all(W == W[0])
+    assert np.all(W[0] == W)
     assert W[0] == pytest.approx(psychro.W_from_RH(26.0, 0.55))
     RH = psychro.RH_from_W(S.T_o(t), W)
     assert RH.max() == pytest.approx(0.55 * psychro.p_ws(26.0) / psychro.p_ws(20.0))

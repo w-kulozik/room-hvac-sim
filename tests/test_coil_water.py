@@ -3,14 +3,13 @@
 import numpy as np
 import pytest
 
+from criteria import RH_RESOLUTION_W
 from roomsim import psychro
 from roomsim.ac_unit import ACUnit, _h
 from roomsim.inputs import HOUR, ConstantInputs
 from roomsim.params import RoomParams
 from roomsim.plant import equilibrium_state
 from roomsim.simulate import simulate
-
-from criteria import RH_RESOLUTION_W
 
 P = RoomParams()
 UNIT = ACUnit()

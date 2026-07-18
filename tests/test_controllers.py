@@ -3,17 +3,25 @@
 import numpy as np
 import pytest
 
+from criteria import KH_PER_DAY
 from roomsim.ac_unit import ACUnit
-from roomsim.controllers import (CompressorGuard, DiscretePI, HysteresisLowLoad,
-                                 OnOffThermostat, SigmaDeltaLowLoad, VentilationSchedule,
-                                 fan_command, make_pi_controller, room_pi_tuning, simc_pi)
+from roomsim.controllers import (
+    CompressorGuard,
+    DiscretePI,
+    HysteresisLowLoad,
+    OnOffThermostat,
+    SigmaDeltaLowLoad,
+    VentilationSchedule,
+    fan_command,
+    make_pi_controller,
+    room_pi_tuning,
+    simc_pi,
+)
 from roomsim.inputs import DAY, HOUR, ConstantInputs, SummerScenario
 from roomsim.metrics import compute, low_load_ripples
 from roomsim.params import RoomParams
 from roomsim.plant import equilibrium_state
 from roomsim.simulate import IDX_CMD_FAN, IDX_CMD_S, IDX_CMD_VENT, simulate
-
-from criteria import KH_PER_DAY
 
 P = RoomParams()
 UNIT = ACUnit()
@@ -40,7 +48,7 @@ def test_pi_integrates_error_when_unsaturated():
     for _ in range(10):
         v = pi.demand(1.0)
         pi.update(1.0, v, v)                      # actuator follows exactly: no tracking term
-    assert pi.I == pytest.approx(10 * 0.2 * 60.0 / 600.0)
+    assert pytest.approx(10 * 0.2 * 60.0 / 600.0) == pi.I
 
 
 def _saturate_then_reverse(Tt, e_sat=5.0, e_rev=-0.5, n_sat=120):

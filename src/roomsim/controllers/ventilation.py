@@ -12,15 +12,15 @@ used with every strategy.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 
 from ..params import RoomParams
 from ..plant import IDX_Y_CO2, IDX_Y_TA
 from .base import VentilationSchedule
-from .pi import DiscretePI, simc_pi
 from .mpc import ComfortSchedule
+from .pi import DiscretePI, simc_pi
 
 IDX_VENT = 2
 CO2_OUTDOOR = 420.0
@@ -95,16 +95,17 @@ class StagedVentilation:
             return 0.0
         C, i = y[IDX_Y_CO2], self.stage
         if t - self.t_switch >= self.dwell:
-            if i < len(self.levels) - 1 and C >= self.up[i]:
+            if i < len(self.levels) - 1 and self.up[i] <= C:
                 self.stage, self.t_switch = i + 1, t
-            elif i > 0 and C <= self.down[i - 1]:
+            elif i > 0 and self.down[i - 1] >= C:
                 self.stage, self.t_switch = i - 1, t
         return self.levels[self.stage]
 
 
 class NightFlush:
     """Adds free cooling while the office is empty: full flow when the outdoor air is at least
-    dT cooler than the room and the room is above T_min. ``outdoor`` is the outdoor sensor."""
+    dT cooler than the room and the room is above T_min. ``outdoor`` is the outdoor sensor.
+    """
 
     def __init__(self, inner, outdoor: Callable[[float], float], V_flush: float = 0.03,
                  dT: float = 2.0, T_min: float = 22.0, comfort: ComfortSchedule = ComfortSchedule()):

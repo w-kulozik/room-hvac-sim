@@ -325,7 +325,8 @@ class ACUnit:
 
     def operating_T_r(self, s: float, f: float, T_in: float, W_in: float, T_o: float) -> float:
         """Evaporating temperature where compressor and coil capacities balance, with frost
-        protection (T_r >= T_evap_min)."""
+        protection (T_r >= T_evap_min).
+        """
         T_min = self.p.T_evap_min
         g = lambda T: self._coil(T, f, T_in, W_in, False) - self.compressor_capacity(s, T, T_o)
         if T_min < T_in and g(T_min) <= 0.0:

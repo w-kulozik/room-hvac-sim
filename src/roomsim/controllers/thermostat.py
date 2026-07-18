@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..plant import IDX_Y_TA
-from .base import CompressorGuard, NO_VENTILATION, VentilationSchedule, fan_command
+from .base import NO_VENTILATION, CompressorGuard, VentilationSchedule, fan_command
 
 
 class OnOffThermostat:
@@ -24,9 +24,9 @@ class OnOffThermostat:
 
     def step(self, t: float, y: np.ndarray) -> np.ndarray:
         T, g = y[IDX_Y_TA], self.guard
-        if not g.on and T >= self.T_set + 0.5 * self.band and g.can_start(t):
+        if not g.on and self.T_set + 0.5 * self.band <= T and g.can_start(t):
             g.set(t, True)
-        elif g.on and T <= self.T_set - 0.5 * self.band and g.can_stop(t):
+        elif g.on and self.T_set - 0.5 * self.band >= T and g.can_stop(t):
             g.set(t, False)
         s = self.s_on if g.on else 0.0
         return np.array([s, fan_command(s, self.fan, self.fan_mode), self.ventilation(t)])

@@ -8,8 +8,7 @@ import pytest
 from roomsim import psychro
 from roomsim.inputs import ConstantInputs, SummerScenario
 from roomsim.params import RoomParams
-from roomsim.plant import (IDX_PHI_B, IDX_TA, IDX_TM, IDX_W, U_OFF, equilibrium_state,
-                           fluxes, rhs)
+from roomsim.plant import IDX_PHI_B, IDX_TA, IDX_TM, IDX_W, U_OFF, equilibrium_state, fluxes, rhs
 
 P = RoomParams()
 

@@ -12,7 +12,7 @@ import numpy as np
 from ..ac_unit import ACUnit
 from ..params import RoomParams
 from ..plant import IDX_Y_TA
-from .base import CompressorGuard, NO_VENTILATION, VentilationSchedule, fan_command
+from .base import NO_VENTILATION, CompressorGuard, VentilationSchedule, fan_command
 from .lowload import HysteresisLowLoad, SigmaDeltaLowLoad, ripple_T_ref
 from .pi import DiscretePI, room_pi_tuning
 

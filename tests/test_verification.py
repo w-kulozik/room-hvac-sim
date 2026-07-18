@@ -6,11 +6,11 @@ import numpy as np
 import pytest
 from scipy.integrate import solve_ivp
 
+from roomsim import verification as v
 from roomsim.inputs import DAY, HOUR, ConstantInputs, SummerScenario
 from roomsim.params import RoomParams
 from roomsim.plant import IDX_CO2, IDX_PHI_B, IDX_TA, IDX_TM, IDX_W, U_OFF, equilibrium_state, rhs
 from roomsim.simulate import periodic_state, simulate
-from roomsim import verification as v
 
 P = RoomParams()
 

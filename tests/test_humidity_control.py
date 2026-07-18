@@ -5,6 +5,7 @@ import math
 import numpy as np
 import pytest
 
+from criteria import KH_PER_DAY, RH_ACCURACY
 from roomsim.ac_unit import OFF_STATE, ACUnit
 from roomsim.controllers import OnOffThermostat, VentilationSchedule, make_pi_controller
 from roomsim.controllers.humidity import CoilCascade, FanHumidityPI
@@ -13,8 +14,6 @@ from roomsim.metrics import compute
 from roomsim.params import RoomParams
 from roomsim.plant import equilibrium_state
 from roomsim.simulate import coil_sensor, simulate
-
-from criteria import KH_PER_DAY, RH_ACCURACY
 
 P = RoomParams()
 UNIT = ACUnit()
@@ -59,7 +58,7 @@ def test_h1_slows_the_fan_down_to_its_minimum_when_humid():
     assert fans[-1] == pytest.approx(F_MIN)
     # under saturation the integrator settles at 1 - Kp e (1 - Tt/Ti) instead of winding up
     pi = c.pi
-    assert pi.I == pytest.approx(1.0 - pi.Kp * 15.0 * 0.5, rel=1e-6)
+    assert pytest.approx(1.0 - pi.Kp * 15.0 * 0.5, rel=1e-6) == pi.I
     # once dry (e = -5 %) it unwinds at Kp Ts/Ti per %RH and sample; the fan is back at full
     # speed when Kp e + I reaches 0
     n_expected = (pi.I - pi.Kp * 5.0) / (pi.Kp * pi.Ts / pi.Ti * 5.0)

@@ -9,9 +9,17 @@ import numpy as np
 from . import psychro
 from .inputs import Disturbances
 from .params import RoomParams
-from .plant import (IDX_CO2, IDX_PHI_B, IDX_TA, IDX_TM, IDX_W, Fluxes, stored_co2,
-                    stored_energy, stored_water)
-
+from .plant import (
+    IDX_CO2,
+    IDX_PHI_B,
+    IDX_TA,
+    IDX_TM,
+    IDX_W,
+    Fluxes,
+    stored_co2,
+    stored_energy,
+    stored_water,
+)
 
 # Unit operating-point quantities logged at every grid point
 UNIT_FIELDS = ("Q_sens", "m_lat", "Q_coil", "P_el", "P_fan_in", "COP", "T_s", "T_out",
@@ -28,7 +36,7 @@ class UnitLog:
     E_el: np.ndarray             # cumulative electrical energy since t_0, J
     M_drain: np.ndarray          # cumulative condensate drained since t_0, kg
 
-    def window(self, m: np.ndarray) -> "UnitLog":
+    def window(self, m: np.ndarray) -> UnitLog:
         return UnitLog(cmd=self.cmd[m], op={k: v[m] for k, v in self.op.items()},
                        M_coil=self.M_coil[m], E_el=self.E_el[m] - self.E_el[m][0],
                        M_drain=self.M_drain[m] - self.M_drain[m][0])
@@ -131,7 +139,7 @@ class SimResult:
         return sum(self.q[name] for name in BOUNDARY_HEAT_FIELDS)
 
     # ---- slicing ----------------------------------------------------------------------
-    def window(self, t0: float, t1: float | None = None) -> "SimResult":
+    def window(self, t0: float, t1: float | None = None) -> SimResult:
         """Sub-result on t0 <= t <= t1, with cumulative integrals restarted at t0."""
         t1 = self.t[-1] if t1 is None else t1
         m = (self.t >= t0 - 1e-9) & (self.t <= t1 + 1e-9)

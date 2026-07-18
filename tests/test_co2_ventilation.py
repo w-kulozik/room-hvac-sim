@@ -5,12 +5,11 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
+from roomsim import verification as v
 from roomsim.inputs import DAY, HOUR, ConstantInputs, SummerScenario
 from roomsim.params import RoomParams
-from roomsim.plant import (IDX_CO2, IDX_TA, IDX_V_VENT, IDX_W, U_OFF, equilibrium_state,
-                           fluxes, rhs)
+from roomsim.plant import IDX_CO2, IDX_V_VENT, U_OFF, equilibrium_state, fluxes, rhs
 from roomsim.simulate import simulate
-from roomsim import verification as v
 
 P = RoomParams()
 

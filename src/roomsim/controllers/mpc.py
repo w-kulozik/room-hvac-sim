@@ -34,15 +34,14 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import linprog
 
+from .. import psychro
 from ..ac_unit import ACUnit
 from ..control_model import RCModel
 from ..estimation import DisturbanceKalman
 from ..inputs import Scenario, hour_of_day
-from .. import psychro
-from ..params import RoomParams
 from ..plant import IDX_Y_RH, IDX_Y_TA
 from ..tariff import TimeOfUseTariff
-from .base import CompressorGuard, NO_VENTILATION, VentilationSchedule
+from .base import NO_VENTILATION, CompressorGuard, VentilationSchedule
 from .pi_unit import PIUnitController, make_pi_controller
 
 HOUR = 3600.0

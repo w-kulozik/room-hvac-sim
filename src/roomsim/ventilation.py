@@ -26,5 +26,6 @@ class VentilationFan:
 
     def energy_kWh(self, r: SimResult) -> float:
         """Fan energy over a result. The flow is held over each step (row k covers
-        [t_k, t_k + dt)), so this sum is exact."""
+        [t_k, t_k + dt)), so this sum is exact.
+        """
         return float(np.sum(self.power(r.u[:-1, IDX_V_VENT])) * r.dt / 3.6e6)

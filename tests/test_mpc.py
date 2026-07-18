@@ -4,10 +4,15 @@ import numpy as np
 import pytest
 from scipy.linalg import expm
 
+from criteria import KH_PER_DAY, ROBUST_ENERGY_REL
 from roomsim.ac_unit import ACUnit
 from roomsim.control_model import RCModel
-from roomsim.controllers import (ComfortSchedule, EconomicMPC, VentilationSchedule,
-                                 make_pi_controller)
+from roomsim.controllers import (
+    ComfortSchedule,
+    EconomicMPC,
+    VentilationSchedule,
+    make_pi_controller,
+)
 from roomsim.estimation import DisturbanceKalman, augmented
 from roomsim.inputs import DAY, HOUR, ConstantInputs, SummerScenario
 from roomsim.metrics import compute, energy_cost
@@ -15,8 +20,6 @@ from roomsim.params import RoomParams
 from roomsim.plant import equilibrium_state
 from roomsim.simulate import simulate
 from roomsim.tariff import TimeOfUseTariff
-
-from criteria import KH_PER_DAY, ROBUST_ENERGY_REL
 
 P = RoomParams()
 UNIT = ACUnit()
