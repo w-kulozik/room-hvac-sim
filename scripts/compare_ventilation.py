@@ -12,6 +12,7 @@ day (D27). A last, exploratory table varies the night-flush flow.
 
 from __future__ import annotations
 
+import io
 import sys
 from pathlib import Path
 
@@ -28,11 +29,13 @@ from roomsim.controllers import (
     WithVentilation,
     make_pi_controller,
 )
+from roomsim.controllers.ventilation import VentilationStrategy
 from roomsim.inputs import DAY, HOUR, VARIABLE_OCCUPANCY, SummerScenario
 from roomsim.metrics import compute
 from roomsim.params import RoomParams
 from roomsim.plant import IDX_V_VENT, equilibrium_state
 from roomsim.plotting import apply_style, plot_ventilation_day
+from roomsim.results import SimResult
 from roomsim.simulate import simulate
 from roomsim.ventilation import VentilationFan
 
@@ -42,18 +45,34 @@ CO2_LIMIT = 1000.0
 P, UNIT, FAN = RoomParams(), ACUnit(), VentilationFan()
 
 
-def thermal():
+def thermal() -> CoilCascade:
+    """Return a new temperature and humidity controller (PI with sigma-delta, coil cascade)."""
     return CoilCascade(make_pi_controller("sigma-delta", P, UNIT), RH_set=0.55)
 
 
-def run(scenario, strategy):
+def run(scenario: SummerScenario, strategy: VentilationStrategy) -> SimResult:
+    """Simulate the warm-up and reported days; return the reported days only.
+
+    Parameters
+    ----------
+    scenario : SummerScenario
+        Weather and occupancy.
+    strategy : VentilationStrategy
+        Ventilation strategy combined with the controller of `thermal`.
+
+    Returns
+    -------
+    SimResult
+        Result from the end of the warm-up days, with cumulative quantities restarted.
+    """
     x0 = equilibrium_state(26.0, 26.0, float(scenario.W_o(0.0)))
     r = simulate(P, scenario, x0, (WARMUP_DAYS + DAYS) * DAY,
                  controller=WithVentilation(thermal(), strategy), unit=UNIT)
     return r.window(WARMUP_DAYS * DAY)
 
 
-def row(name, r):
+def row(name: str, r: SimResult) -> str:
+    """Return the Markdown table row of `HEADER` for result `r` under label `name`."""
     m = compute(r, 25.0)
     occ = np.asarray(r.d.n_occ)[:-1] > 0
     C = r.CO2[:-1]
@@ -68,9 +87,14 @@ HEADER = ["| Strategy | AC (kWh) | Fan (kWh) | Total (kWh) | Air (m³) | CO₂ m
           "CO₂ max occ. (ppm) | h > 1000 ppm | K·h outside band |", "|" + "---|" * 9]
 
 
-def strategies(S):
+def strategies(S: SummerScenario) -> dict[str, VentilationStrategy]:
+    """Return new instances of the compared ventilation strategies, keyed by name.
+
+    The night flush takes its outdoor temperature from `S`.
+    """
     return {
-        "No ventilation (infiltration only)": ScheduledVentilation(VentilationSchedule(V_occupied=0.0)),
+        "No ventilation (infiltration only)": ScheduledVentilation(
+            VentilationSchedule(V_occupied=0.0)),
         "V0 fixed schedule": ScheduledVentilation(VentilationSchedule()),
         "V1 demand-controlled PI": DemandControlledPI(P),
         "V2 staged levels": StagedVentilation(),
@@ -79,9 +103,10 @@ def strategies(S):
 
 
 def main() -> None:
+    """Run all strategies and scenarios; write figures/ventilation_comparison.md and the figure."""
     FIG.mkdir(exist_ok=True)
     apply_style()
-    out = []
+    out: list[str] = []
     scenarios = {"Two people, 8-18 h (design case)": SummerScenario(),
                  "Variable occupancy (D27)": SummerScenario(occupancy=VARIABLE_OCCUPANCY)}
     last_results = None
@@ -93,19 +118,22 @@ def main() -> None:
     S = scenarios["Variable occupancy (D27)"]
     # exploratory: a fixed flow large enough for the 3-person peak (CO2 at 1000 ppm in steady state)
     V_peak = 3 * P.co2_person * 1e6 / (CO2_LIMIT - 420.0) - P.V_dot_inf
-    out += ["### Fixed schedule sized for the peak (exploratory, variable occupancy)", ""] + HEADER
+    out += ["### Fixed schedule sized for the peak (exploratory, variable occupancy)", "", *HEADER]
     out.append(row(f"V0 sized for 3 people ({V_peak * 3600:.0f} m³/h)",
                    run(S, ScheduledVentilation(VentilationSchedule(V_occupied=V_peak)))))
-    out += ["", "### Night-flush flow (exploratory, design case)", ""] + HEADER
+    out += ["", "### Night-flush flow (exploratory, design case)", "", *HEADER]
     for V in (0.01, 0.015, 0.02, 0.03):
         r = run(SummerScenario(), NightFlush(DemandControlledPI(P), outdoor=S.T_o, V_flush=V))
         out.append(row(f"V3 with flush at {V * 3600:.0f} m³/h", r))
     text = "\n".join(out)
-    sys.stdout.reconfigure(encoding="utf-8")    # the table is not cp1252 (subscript 2 in CO2)
+    if isinstance(sys.stdout, io.TextIOWrapper):  # the table is not cp1252 (subscript 2 in CO2)
+        sys.stdout.reconfigure(encoding="utf-8")
     print(text)
     (FIG / "ventilation_comparison.md").write_text(text + "\n", encoding="utf-8", newline="\n")
 
-    shown = ("V0 fixed schedule", "V1 demand-controlled PI", "V2 staged levels", "V3 V1 + night flush")
+    shown = ("V0 fixed schedule", "V1 demand-controlled PI", "V2 staged levels",
+             "V3 V1 + night flush")
+    assert last_results is not None
     last_day = {n: last_results[n].window((WARMUP_DAYS + DAYS - 1) * DAY) for n in shown}
     plot_ventilation_day(last_day, CO2_LIMIT, FIG / "ventilation_day.png")
     print(f"\nFigures written to {FIG}")

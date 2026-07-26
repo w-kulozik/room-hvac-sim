@@ -7,14 +7,30 @@ where there is room, a direct label.
 
 from __future__ import annotations
 
+import os
+from typing import TYPE_CHECKING, cast
+
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from ._typing import FloatArray
 from .inputs import DAY, HOUR
 from .results import SimResult
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from matplotlib.axes import Axes
+    from numpy.typing import ArrayLike
+
+    from .controllers import ComfortSchedule
+    from .metrics import Metrics
+    from .tariff import TimeOfUseTariff
+
+StrPath = str | os.PathLike[str]    # output file accepted by Figure.savefig
 
 BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
 INK, INK_2, MUTED, GRID, SHADE = "#0b0b0b", "#52514e", "#8a8984", "#e6e5e1", "#f0efec"
@@ -22,6 +38,7 @@ REF = "#8a8984"   # reference lines (analytical slopes)
 
 
 def apply_style() -> None:
+    """Set the shared matplotlib rcParams: colours, fonts, grid, legend and output resolution."""
     plt.rcParams.update({
         "figure.facecolor": "#fcfcfb", "axes.facecolor": "#fcfcfb",
         "axes.edgecolor": MUTED, "axes.labelcolor": INK_2, "axes.titlecolor": INK,
@@ -35,8 +52,9 @@ def apply_style() -> None:
     })
 
 
-def _time_axis(ax, r: SimResult) -> np.ndarray:
-    th = (r.t - r.t[0]) / HOUR
+def _time_axis(ax: Axes, r: SimResult) -> FloatArray:
+    """Set 12-hourly clock ticks on `ax`; return the time since the start of `r`, h."""
+    th = cast(FloatArray, (r.t - r.t[0]) / HOUR)
     ax.set_xlim(th[0], th[-1])
     ax.set_xticks(np.arange(0, th[-1] + 1, 12))
     ax.set_xticklabels([f"{int(h % 24):02d}:00\nday {int(h // 24) + 1}" if h % 24 == 0
@@ -44,7 +62,8 @@ def _time_axis(ax, r: SimResult) -> np.ndarray:
     return th
 
 
-def _shade_occupancy(ax, r: SimResult, th: np.ndarray, label: bool = True) -> None:
+def _shade_occupancy(ax: Axes, r: SimResult, th: FloatArray, label: bool = True) -> None:
+    """Shade the occupied intervals of `r` on `ax`; `th` is the time axis, h."""
     occ = np.asarray(r.d.n_occ) > 0
     edges = np.flatnonzero(np.diff(occ.astype(int)))
     starts = list(th[edges[occ[edges + 1]] + 1]) if len(edges) else []
@@ -53,23 +72,38 @@ def _shade_occupancy(ax, r: SimResult, th: np.ndarray, label: bool = True) -> No
         starts.insert(0, th[0])
     if occ[-1]:
         ends.append(th[-1])
-    for i, (a, b) in enumerate(zip(starts, ends)):
-        ax.axvspan(a, b, color=SHADE, zorder=0, lw=0, label="occupied" if (i == 0 and label) else None)
+    # rising and falling edges alternate, so every start has its end
+    for i, (a, b) in enumerate(zip(starts, ends, strict=True)):
+        ax.axvspan(a, b, color=SHADE, zorder=0, lw=0,
+                   label="occupied" if (i == 0 and label) else None)
 
 
-def _legend_top(ax, ncol: int) -> None:
+def _legend_top(ax: Axes, ncol: int) -> None:
+    """Place the legend of `ax` above the plot area in `ncol` columns and raise the title."""
     ax.legend(loc="lower left", bbox_to_anchor=(0.0, 1.0), ncol=ncol, borderaxespad=0.2,
               handlelength=1.8, columnspacing=1.4)
     ax.set_title(ax.get_title(loc="left"), loc="left", pad=24)
 
 
-def _direct_label(ax, x, y, text, color) -> None:
+def _direct_label(ax: Axes, x: float, y: float, text: str, color: str) -> None:
+    """Write `text` next to the point (x, y) of `ax`, in a box outlined in `color`."""
     ax.annotate(text, (x, y), xytext=(4, 0), textcoords="offset points",
                 va="center", fontsize=8.5, color=INK_2,
-                bbox=dict(boxstyle="round,pad=0.15", fc="#fcfcfb", ec=color, lw=1.2))
+                bbox={"boxstyle": "round,pad=0.15", "fc": "#fcfcfb", "ec": color, "lw": 1.2})
 
 
-def plot_temperatures(r: SimResult, path) -> None:
+def plot_temperatures(r: SimResult, path: StrPath) -> None:
+    """Plot outdoor, thermal-mass and indoor air temperatures and save the figure.
+
+    The maximum air temperature is marked and labelled; occupied hours are shaded.
+
+    Parameters
+    ----------
+    r : SimResult
+        Result to plot.
+    path : str or os.PathLike
+        Output file.
+    """
     fig, ax = plt.subplots(figsize=(9, 3.8))
     th = _time_axis(ax, r)
     _shade_occupancy(ax, r, th)
@@ -79,8 +113,9 @@ def plot_temperatures(r: SimResult, path) -> None:
     k = int(np.argmax(r.T_a))
     ax.plot(th[k], r.T_a[k], "o", ms=6, color=BLUE, mec="#fcfcfb", mew=1.5)
     ax.annotate(f"max {r.T_a[k]:.1f} °C at {(r.t[k] % DAY) / HOUR:.1f} h", (th[k], r.T_a[k]),
-                xytext=(-10, -6), textcoords="offset points", ha="right", va="top", fontsize=8.5, color=INK,
-                bbox=dict(boxstyle="round,pad=0.2", fc="#fcfcfb", ec="none", alpha=0.9))
+                xytext=(-10, -6), textcoords="offset points", ha="right", va="top",
+                fontsize=8.5, color=INK,
+                bbox={"boxstyle": "round,pad=0.2", "fc": "#fcfcfb", "ec": "none", "alpha": 0.9})
     ax.set_ylabel("temperature (°C)")
     ax.set_title("Free-floating room temperatures, summer periodic steady state")
     _legend_top(ax, 4)
@@ -88,7 +123,16 @@ def plot_temperatures(r: SimResult, path) -> None:
     plt.close(fig)
 
 
-def plot_humidity(r: SimResult, path) -> None:
+def plot_humidity(r: SimResult, path: StrPath) -> None:
+    """Plot relative humidity (top) and dew point (bottom), outdoor and indoor, and save.
+
+    Parameters
+    ----------
+    r : SimResult
+        Result to plot.
+    path : str or os.PathLike
+        Output file.
+    """
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 5.6), sharex=True)
     th = _time_axis(ax2, r)
     for ax in (ax1, ax2):
@@ -96,7 +140,8 @@ def plot_humidity(r: SimResult, path) -> None:
     from .psychro import RH_from_W
     ax1.plot(th, 100 * RH_from_W(r.d.T_o, r.d.W_o), color=ORANGE, label="outdoor")
     ax1.plot(th, 100 * r.RH, color=BLUE, label="indoor air")
-    ax1.plot(th, 100 * r.phi_b, color=AQUA, lw=1.4, ls=(0, (4, 2)), label="wall buffer $\\varphi_b$")
+    ax1.plot(th, 100 * r.phi_b, color=AQUA, lw=1.4, ls=(0, (4, 2)),
+             label="wall buffer $\\varphi_b$")
     ax1.set_ylabel("relative humidity (%)")
     ax1.set_title("Relative humidity")
     _legend_top(ax1, 4)
@@ -110,7 +155,16 @@ def plot_humidity(r: SimResult, path) -> None:
     plt.close(fig)
 
 
-def plot_energy_balance(r: SimResult, path) -> None:
+def plot_energy_balance(r: SimResult, path: StrPath) -> None:
+    """Plot boundary heat against stored energy (top) and their residual (bottom), and save.
+
+    Parameters
+    ----------
+    r : SimResult
+        Result to plot.
+    path : str or os.PathLike
+        Output file.
+    """
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 5.6), sharex=True)
     th = _time_axis(ax2, r)
     ax1.plot(th, r.E_in / 1e6, color=ORANGE, lw=3.2, label="∫ boundary heat flows dt")
@@ -132,10 +186,26 @@ def plot_energy_balance(r: SimResult, path) -> None:
     plt.close(fig)
 
 
-def plot_convergence(studies: dict, path) -> None:
-    """studies: {title: (dts, {method: errors}, ylabel)}"""
+def plot_convergence(
+    studies: Mapping[str, tuple[FloatArray, Mapping[str, ArrayLike], str]], path: StrPath
+) -> None:
+    """Plot error against time step for RK4 and Euler, one panel per study, and save.
+
+    Each panel gives the fitted slope in the legend and a reference line of the theoretical
+    order (4 for RK4, 1 for Euler) through the error at the smallest step.
+
+    Parameters
+    ----------
+    studies : mapping
+        ``{title: (dts, {method: errors}, ylabel)}``: time steps `dts` (s), one error per step
+        for each of the methods ``"rk4"`` and ``"euler"`` (unit given by `ylabel`), and the
+        y-axis label.
+    path : str or os.PathLike
+        Output file.
+    """
     fig, axes = plt.subplots(1, len(studies), figsize=(9, 3.8))
-    for ax, (title, (dts, errs, ylabel)) in zip(np.atleast_1d(axes), studies.items()):
+    for ax, (title, (dts, errs, ylabel)) in zip(np.atleast_1d(axes), studies.items(),
+                                                strict=True):
         from .verification import convergence_order
         for method, color, marker, order in (("rk4", BLUE, "o", 4), ("euler", ORANGE, "s", 1)):
             e = np.asarray(errs[method])
@@ -163,13 +233,34 @@ YELLOW, MAGENTA = "#eda100", "#e87ba4"
 SERIES = (BLUE, ORANGE, AQUA, YELLOW, MAGENTA)    # fixed order: colour follows the controller
 
 
-def plot_controller_day(results: dict, T_set: float, path, band: float = 1.0) -> None:
-    """One day per controller: air temperature (top) and compressor speed (bottom)."""
+def plot_controller_day(results: Mapping[str, SimResult], T_set: float, path: StrPath,
+                        band: float = 1.0) -> None:
+    """Plot one day per controller: air temperature (top) and compressor speed (bottom).
+
+    Parameters
+    ----------
+    results : mapping of str to SimResult
+        One-day results with a unit record, keyed by controller name (at most five; colours
+        follow `SERIES`).
+    T_set : float
+        Temperature set point, degC.
+    path : str or os.PathLike
+        Output file.
+    band : float, optional
+        Half-width of the shaded band around `T_set`, K.
+
+    Raises
+    ------
+    ValueError
+        If a result has no unit record.
+    """
     n = len(results)
     fig = plt.figure(figsize=(9, 2.25 * n + 0.4))
     subfigs = fig.subfigures(n, 1, hspace=0.02)
-    for i, (sf, (name, r), color) in enumerate(zip(subfigs, results.items(), SERIES)):
-        axT, axS = sf.subplots(2, 1, sharex=True, gridspec_kw=dict(height_ratios=[3, 1], hspace=0.12))
+    for i, (sf, (name, r), color) in enumerate(zip(subfigs, results.items(), SERIES,
+                                                   strict=False)):
+        axT, axS = sf.subplots(2, 1, sharex=True,
+                               gridspec_kw={"height_ratios": [3, 1], "hspace": 0.12})
         th = (r.t - r.t[0]) / HOUR
         for ax in (axT, axS):
             _shade_occupancy(ax, r, th, label=False)
@@ -180,7 +271,7 @@ def plot_controller_day(results: dict, T_set: float, path, band: float = 1.0) ->
         axT.set_ylim(T_set - band - 0.2, T_set + band + 0.2)
         axT.set_ylabel("$T_a$ (°C)")
         axT.set_title(name, loc="left", fontsize=10, pad=4)
-        axS.step(th, r.unit.cmd[:, 0], where="post", color=color, lw=1.1)
+        axS.step(th, r.require_unit().cmd[:, 0], where="post", color=color, lw=1.1)
         axS.set_ylim(-0.05, 1.08)
         axS.set_yticks([0, 0.3, 1])
         axS.set_ylabel("s (-)")
@@ -194,20 +285,31 @@ def plot_controller_day(results: dict, T_set: float, path, band: float = 1.0) ->
     plt.close(fig)
 
 
-def plot_controller_metrics(metrics: dict, path) -> None:
-    """Small multiples of the main indicators, one bar per controller."""
+def plot_controller_metrics(metrics: Mapping[str, Metrics], path: StrPath) -> None:
+    """Plot small multiples of the main indicators, one bar per controller, and save.
+
+    Panels: electrical energy (kWh), compressor starts, RMS temperature deviation while
+    occupied (K) and hours above 60 % RH while occupied (h).
+
+    Parameters
+    ----------
+    metrics : mapping of str to Metrics
+        Indicators keyed by controller name (at most five; colours follow `SERIES`).
+    path : str or os.PathLike
+        Output file.
+    """
     panels = [("energy_kWh", "Electrical energy (kWh)"), ("starts", "Compressor starts"),
               ("T_rms_occ", "RMS deviation, occupied (K)"),
               ("h_RH60_occ", "Hours above 60 % RH, occupied")]
     names = list(metrics)
     fig, axes = plt.subplots(1, len(panels), figsize=(11, 3.0), sharey=True)
     y = np.arange(len(names))[::-1]
-    for ax, (key, title) in zip(axes, panels):
+    for ax, (key, title) in zip(axes, panels, strict=True):
         ax.set_axisbelow(True)
         vals = [getattr(metrics[n], key) for n in names]
         ax.barh(y, vals, color=SERIES[:len(names)], height=0.62, edgecolor="#fcfcfb", linewidth=2)
         vmax = max(vals) if max(vals) > 0 else 1.0
-        for yi, v in zip(y, vals):
+        for yi, v in zip(y, vals, strict=True):
             ax.text(v + 0.02 * vmax, yi, f"{v:.3g}" if isinstance(v, float) else str(v),
                     va="center", fontsize=8.5, color=INK_2)
         ax.set_xlim(0, vmax * 1.25)
@@ -220,13 +322,31 @@ def plot_controller_metrics(metrics: dict, path) -> None:
     plt.close(fig)
 
 
-def plot_humidity_day(results: dict, RH_set: float, path) -> None:
-    """One day per controller: indoor RH (top) and indoor fan speed while running (bottom)."""
+def plot_humidity_day(results: Mapping[str, SimResult], RH_set: float, path: StrPath) -> None:
+    """Plot one day per controller: indoor RH (top) and indoor fan speed while running (bottom).
+
+    Parameters
+    ----------
+    results : mapping of str to SimResult
+        One-day results with a unit record, keyed by controller name (at most five; colours
+        follow `SERIES`).
+    RH_set : float
+        Relative-humidity set point, fraction.
+    path : str or os.PathLike
+        Output file.
+
+    Raises
+    ------
+    ValueError
+        If a result has no unit record.
+    """
     n = len(results)
     fig = plt.figure(figsize=(9, 2.25 * n + 0.4))
     subfigs = fig.subfigures(n, 1, hspace=0.02)
-    for i, (sf, (name, r), color) in enumerate(zip(subfigs, results.items(), SERIES)):
-        axH, axF = sf.subplots(2, 1, sharex=True, gridspec_kw=dict(height_ratios=[3, 1], hspace=0.12))
+    for i, (sf, (name, r), color) in enumerate(zip(subfigs, results.items(), SERIES,
+                                                   strict=False)):
+        axH, axF = sf.subplots(2, 1, sharex=True,
+                               gridspec_kw={"height_ratios": [3, 1], "hspace": 0.12})
         th = (r.t - r.t[0]) / HOUR
         for ax in (axH, axF):
             _shade_occupancy(ax, r, th, label=False)
@@ -237,7 +357,8 @@ def plot_humidity_day(results: dict, RH_set: float, path) -> None:
         axH.set_ylim(45, 70)
         axH.set_ylabel("RH (%)")
         axH.set_title(name, loc="left", fontsize=10, pad=4)
-        fan = np.where(r.unit.cmd[:, 0] > 0, r.unit.cmd[:, 1], np.nan)
+        cmd = r.require_unit().cmd
+        fan = np.where(cmd[:, 0] > 0, cmd[:, 1], np.nan)
         axF.step(th, fan, where="post", color=color, lw=1.1)
         axF.set_ylim(0.3, 1.05)
         axF.set_yticks([0.4, 1.0])
@@ -252,10 +373,32 @@ def plot_humidity_day(results: dict, RH_set: float, path) -> None:
     plt.close(fig)
 
 
-def plot_mpc_day(results: dict, comfort, tariff, path) -> None:
-    """Air temperature against the comfort band (top) and hourly mean electrical power (bottom)."""
+def plot_mpc_day(results: Mapping[str, SimResult], comfort: ComfortSchedule,
+                 tariff: TimeOfUseTariff, path: StrPath) -> None:
+    """Plot air temperature against the comfort band (top) and hourly mean power (bottom).
+
+    Peak-tariff hours are shaded. The grid of the first result is used for the band and the
+    tariff.
+
+    Parameters
+    ----------
+    results : mapping of str to SimResult
+        One-day results with a unit record on the same grid, keyed by controller name (at
+        most five; colours follow `SERIES`).
+    comfort : ComfortSchedule
+        Comfort band of the air temperature, degC.
+    tariff : TimeOfUseTariff
+        Electricity tariff; prices above `tariff.offpeak` mark the peak hours.
+    path : str or os.PathLike
+        Output file.
+
+    Raises
+    ------
+    ValueError
+        If a result has no unit record.
+    """
     fig, (axT, axP) = plt.subplots(2, 1, figsize=(9, 6.0), sharex=True,
-                                   gridspec_kw=dict(height_ratios=[3, 2], hspace=0.12))
+                                   gridspec_kw={"height_ratios": [3, 2], "hspace": 0.12})
     r0 = next(iter(results.values()))
     th = (r0.t - r0.t[0]) / HOUR
     lo, hi = comfort.bounds(r0.t)
@@ -264,13 +407,14 @@ def plot_mpc_day(results: dict, comfort, tariff, path) -> None:
     for ax in (axT, axP):
         ax.set_axisbelow(True)
         edges = np.flatnonzero(np.diff(peak.astype(int))) + 1
-        for a, b in zip(edges[::2], edges[1::2]):
+        for a, b in zip(edges[::2], edges[1::2], strict=False):
             ax.axvspan(th[a], th[b], color=SHADE, lw=0, zorder=0)
-    for (name, r), color in zip(results.items(), SERIES):
+    for (name, r), color in zip(results.items(), SERIES, strict=False):
         axT.plot(th, r.T_a, color=color, lw=1.3, label=name)
         hours = np.floor(th[:-1]).astype(int)
-        P_h = np.bincount(hours, weights=r.unit.op["P_el"][:-1]) / np.bincount(hours)
-        axP.step(np.arange(len(P_h) + 1), np.append(P_h, P_h[-1]), where="post", color=color, lw=1.5)
+        P_h = np.bincount(hours, weights=r.require_unit().op["P_el"][:-1]) / np.bincount(hours)
+        axP.step(np.arange(len(P_h) + 1), np.append(P_h, P_h[-1]), where="post", color=color,
+                 lw=1.5)
     axT.set_ylim(min(19.5, min(r.T_a.min() for r in results.values()) - 0.3), 28.8)
     axT.set_ylabel("$T_a$ (°C)")
     axT.set_title("Air temperature and electrical power over one day "
@@ -284,14 +428,27 @@ def plot_mpc_day(results: dict, comfort, tariff, path) -> None:
     plt.close(fig)
 
 
-def plot_ventilation_day(results: dict, co2_limit: float, path) -> None:
-    """One day per strategy: CO2 (top) and ventilation flow (bottom)."""
+def plot_ventilation_day(results: Mapping[str, SimResult], co2_limit: float,
+                         path: StrPath) -> None:
+    """Plot one day per strategy: CO2 (top) and ventilation flow (bottom), and save.
+
+    Parameters
+    ----------
+    results : mapping of str to SimResult
+        One-day results keyed by strategy name (at most five; colours follow `SERIES`).
+    co2_limit : float
+        CO2 concentration drawn as a reference line, ppm.
+    path : str or os.PathLike
+        Output file.
+    """
     from .plant import IDX_V_VENT
     n = len(results)
     fig = plt.figure(figsize=(9, 2.25 * n + 0.4))
     subfigs = fig.subfigures(n, 1, hspace=0.02)
-    for i, (sf, (name, r), color) in enumerate(zip(subfigs, results.items(), SERIES)):
-        axC, axV = sf.subplots(2, 1, sharex=True, gridspec_kw=dict(height_ratios=[3, 1], hspace=0.12))
+    for i, (sf, (name, r), color) in enumerate(zip(subfigs, results.items(), SERIES,
+                                                   strict=False)):
+        axC, axV = sf.subplots(2, 1, sharex=True,
+                               gridspec_kw={"height_ratios": [3, 1], "hspace": 0.12})
         th = (r.t - r.t[0]) / HOUR
         for ax in (axC, axV):
             _shade_occupancy(ax, r, th, label=False)
@@ -308,7 +465,8 @@ def plot_ventilation_day(results: dict, co2_limit: float, path) -> None:
         axV.set_xlim(0, 24)
         axV.set_xticks(np.arange(0, 25, 3))
         axV.set_xticklabels([f"{h:02d}:00" for h in range(0, 25, 3)] if i == n - 1 else [])
-    fig.suptitle(f"CO$_2$ and ventilation flow over one day (line: {co2_limit:.0f} ppm; grey: occupied)",
+    fig.suptitle(f"CO$_2$ and ventilation flow over one day (line: {co2_limit:.0f} ppm; "
+                 "grey: occupied)",
                  x=0.06, y=1.0, ha="left", va="bottom", fontsize=11, fontweight="semibold")
     fig.savefig(path)
     plt.close(fig)

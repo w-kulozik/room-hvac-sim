@@ -21,8 +21,7 @@ and use back-calculation against their own output limits.
 
 from __future__ import annotations
 
-import numpy as np
-
+from .._typing import FloatArray
 from ..plant import IDX_Y_RH, IDX_Y_TCOIL
 from .pi import DiscretePI
 from .pi_unit import PIUnitController
@@ -31,14 +30,46 @@ IDX_S, IDX_F = 0, 1
 
 
 class FanHumidityPI:
-    """H1: relative-humidity PI on the indoor fan speed."""
+    """H1: relative-humidity PI on the indoor fan speed.
+
+    Parameters
+    ----------
+    temperature : PIUnitController
+        Temperature controller that sets the compressor command.
+    RH_set : float, optional
+        Relative-humidity set point, - (fraction).
+    Kp : float, optional
+        Proportional gain, fan reduction demand per %RH.
+    Ti : float, optional
+        Integral time, s.
+    f_min : float, optional
+        Minimum fan speed, -.
+    Ts : float, optional
+        Sampling period, s.
+    """
 
     def __init__(self, temperature: PIUnitController, RH_set: float = 0.55,
-                 Kp: float = 0.05, Ti: float = 1800.0, f_min: float = 0.4, Ts: float = 60.0):
+                 Kp: float = 0.05, Ti: float = 1800.0, f_min: float = 0.4,
+                 Ts: float = 60.0) -> None:
         self.temperature, self.RH_set, self.f_min = temperature, RH_set, f_min
         self.pi = DiscretePI(Kp, Ti, Ts)      # demand per %RH
 
-    def step(self, t: float, y: np.ndarray) -> np.ndarray:
+    def step(self, t: float, y: FloatArray) -> FloatArray:
+        """Return the command for one sample, with the fan set by the humidity PI.
+
+        Parameters
+        ----------
+        t : float
+            Current time, s.
+        y : ndarray
+            Measurements; uses the air temperature (degC) and the relative humidity
+            y[IDX_Y_RH] (-).
+
+        Returns
+        -------
+        ndarray, shape (3,)
+            Command [s (-), f (-), V_vent (m3/s)].
+        """
         cmd = self.temperature.step(t, y)
         e = 100.0 * (y[IDX_Y_RH] - self.RH_set)
         v = self.pi.demand(e)
@@ -51,12 +82,43 @@ class FanHumidityPI:
 
 
 class CoilCascade:
-    """H2: RH (outer) -> coil temperature set point -> fan speed (inner)."""
+    """H2: RH (outer) -> coil temperature set point -> fan speed (inner).
+
+    Parameters
+    ----------
+    temperature : PIUnitController
+        Temperature controller that sets the compressor command.
+    RH_set : float, optional
+        Relative-humidity set point, - (fraction).
+    Kp : float, optional
+        Outer proportional gain, K of coil set-point depression per %RH.
+    Ti : float, optional
+        Outer integral time, s.
+    T_s_max, T_s_min : float, optional
+        Limits of the coil temperature set point, degC.
+    Ki_fan : float, optional
+        Inner integral gain, fan speed change per K of coil error per sample, 1/K.
+    f_min : float, optional
+        Minimum fan speed, -.
+    settle_samples : int, optional
+        Samples after a compressor start before the inner loop acts.
+    Ts : float, optional
+        Sampling period, s.
+
+    Attributes
+    ----------
+    f : float
+        Fan speed held by the inner loop, -.
+    T_s_set : float
+        Current coil temperature set point, degC.
+    samples_on : int
+        Consecutive samples with the compressor running.
+    """
 
     def __init__(self, temperature: PIUnitController, RH_set: float = 0.55,
                  Kp: float = 0.3, Ti: float = 1800.0, T_s_max: float = 20.0, T_s_min: float = 8.0,
                  Ki_fan: float = 0.04, f_min: float = 0.4, settle_samples: int = 2,
-                 Ts: float = 60.0):
+                 Ts: float = 60.0) -> None:
         self.temperature, self.RH_set = temperature, RH_set
         self.T_s_max, self.T_s_min = T_s_max, T_s_min
         self.Ki_fan, self.f_min, self.settle = Ki_fan, f_min, settle_samples
@@ -65,7 +127,22 @@ class CoilCascade:
         self.T_s_set = T_s_max
         self.samples_on = 0
 
-    def step(self, t: float, y: np.ndarray) -> np.ndarray:
+    def step(self, t: float, y: FloatArray) -> FloatArray:
+        """Return the command for one sample, with the fan set by the cascade.
+
+        Parameters
+        ----------
+        t : float
+            Current time, s.
+        y : ndarray
+            Measurements; uses the air temperature (degC), the relative humidity y[IDX_Y_RH]
+            (-) and the coil temperature y[IDX_Y_TCOIL] (degC).
+
+        Returns
+        -------
+        ndarray, shape (3,)
+            Command [s (-), f (-), V_vent (m3/s)].
+        """
         cmd = self.temperature.step(t, y)
         running = cmd[IDX_S] > 0
         self.samples_on = self.samples_on + 1 if running else 0

@@ -15,11 +15,12 @@ from pathlib import Path
 from roomsim.ac_unit import ACUnit
 from roomsim.controllers import OnOffThermostat, VentilationSchedule, make_pi_controller
 from roomsim.inputs import DAY, SummerScenario
-from roomsim.metrics import compute
+from roomsim.metrics import Metrics, compute
 from roomsim.params import RoomParams
 from roomsim.plant import equilibrium_state
 from roomsim.plotting import apply_style, plot_controller_day, plot_controller_metrics
-from roomsim.simulate import simulate
+from roomsim.results import SimResult
+from roomsim.simulate import Controller, simulate
 
 FIG = Path(__file__).resolve().parents[1] / "figures"
 T_SET = 25.0
@@ -27,21 +28,25 @@ WARMUP_DAYS, DAYS = 3, 3
 
 
 def main() -> None:
+    """Run the controllers, write figures/controller_comparison.md and the two figures."""
     FIG.mkdir(exist_ok=True)
     apply_style()
     p, unit, S, vent = RoomParams(), ACUnit(), SummerScenario(), VentilationSchedule()
     x0 = equilibrium_state(26.0, 26.0, float(S.W_o(0.0)))
 
-    controllers = {
+    controllers: dict[str, Controller] = {
         "On/off thermostat": OnOffThermostat(T_set=T_SET, ventilation=vent),
         "On/off, fan continuous": OnOffThermostat(T_set=T_SET, ventilation=vent,
                                                   fan_mode="continuous"),
-        "PI + hysteresis (A)": make_pi_controller("hysteresis", p, unit, T_set=T_SET, ventilation=vent),
-        "PI + sigma-delta (C)": make_pi_controller("sigma-delta", p, unit, T_set=T_SET, ventilation=vent),
+        "PI + hysteresis (A)": make_pi_controller("hysteresis", p, unit, T_set=T_SET,
+                                                  ventilation=vent),
+        "PI + sigma-delta (C)": make_pi_controller("sigma-delta", p, unit, T_set=T_SET,
+                                                   ventilation=vent),
         "PI (C), fan continuous": make_pi_controller("sigma-delta", p, unit, T_set=T_SET,
                                                      ventilation=vent, fan_mode="continuous"),
     }
-    results, metrics = {}, {}
+    results: dict[str, SimResult] = {}
+    metrics: dict[str, Metrics] = {}
     for name, ctrl in controllers.items():
         r = simulate(p, S, x0, (WARMUP_DAYS + DAYS) * DAY, controller=ctrl, unit=unit)
         results[name] = r.window(WARMUP_DAYS * DAY)

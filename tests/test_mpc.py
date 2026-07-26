@@ -67,8 +67,8 @@ def test_mismatched_model_scales_primary_parameters():
 def test_augmented_system_is_observable_from_the_air_sensor():
     A, _, _ = augmented(MODEL, 60.0, 0.0)
     C = np.array([[1.0, 0.0, 0.0]])
-    O = np.vstack([C @ np.linalg.matrix_power(A, k) for k in range(3)])
-    assert np.linalg.matrix_rank(O) == 3
+    obs = np.vstack([C @ np.linalg.matrix_power(A, k) for k in range(3)])
+    assert np.linalg.matrix_rank(obs) == 3
 
 
 def test_kalman_recovers_mass_temperature_and_an_unknown_heat_input():

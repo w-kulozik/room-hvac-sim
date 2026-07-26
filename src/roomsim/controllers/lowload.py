@@ -30,25 +30,92 @@ Both respect the compressor guard (minimum run and stop times).
 
 from __future__ import annotations
 
+from typing import Protocol
+
 from .base import CompressorGuard
 
 
-def ripple_T_ref(dT_pp: float, C_a: float, Q_d: float, s_min: float) -> float:
-    """Sigma-delta time scale giving an air-temperature ripple dT_pp (peak to peak), s.
+class LowLoadHandler(Protocol):
+    """Interface of a low-load handler used by ``PIUnitController``."""
 
-    Q_d is the sensible cooling per unit of demand while cycling at s_min, W.
+    guard: CompressorGuard
+
+    def step(self, t: float, v: float, T: float, T_set: float) -> tuple[float, float, bool]:
+        """Return (s, u_applied, integrate) for demand v at time t (s)."""
+        ...
+
+
+def ripple_T_ref(dT_pp: float, C_a: float, Q_d: float, s_min: float) -> float:
+    """Return the sigma-delta time scale giving an air-temperature ripple dT_pp.
+
+    Parameters
+    ----------
+    dT_pp : float
+        Target air-temperature ripple, peak to peak, K.
+    C_a : float
+        Heat capacity of the air node, J/K.
+    Q_d : float
+        Sensible cooling per unit of demand while cycling at s_min, W.
+    s_min : float
+        Minimum compressor command, -.
+
+    Returns
+    -------
+    float
+        Time scale T_ref, s.
     """
     return dT_pp * C_a / (s_min * Q_d)
 
 
 class HysteresisLowLoad:
+    """Handler A: thermostatic cycling at s_min below the minimum speed, integrator frozen.
+
+    Parameters
+    ----------
+    s_min : float
+        Minimum compressor command, -.
+    guard : CompressorGuard
+        Minimum run and stop times.
+    dT_on : float, optional
+        Restart when the air is this far above the set point, K.
+    dT_off : float, optional
+        Stop when the air is this far below the set point, K.
+
+    Attributes
+    ----------
+    cycling : bool
+        Whether the last sample was handled by low-load cycling.
+    """
+
     def __init__(self, s_min: float, guard: CompressorGuard, dT_on: float = 0.5,
-                 dT_off: float = 0.5):
+                 dT_off: float = 0.5) -> None:
         self.s_min, self.guard = s_min, guard
         self.dT_on, self.dT_off = dT_on, dT_off
         self.cycling = False
 
     def step(self, t: float, v: float, T: float, T_set: float) -> tuple[float, float, bool]:
+        """Return the compressor command for demand v at time t.
+
+        Parameters
+        ----------
+        t : float
+            Current time, s.
+        v : float
+            Unsaturated demand from the PI, -.
+        T : float
+            Measured air temperature, degC.
+        T_set : float
+            Set point, degC.
+
+        Returns
+        -------
+        s : float
+            Compressor command, -.
+        u_applied : float
+            Demand the unit meets, for back-calculation, -.
+        integrate : bool
+            False to freeze the PI integrator.
+        """
         g = self.guard
         if v >= self.s_min:
             self.cycling = False
@@ -71,14 +138,59 @@ class HysteresisLowLoad:
 
 
 class SigmaDeltaLowLoad:
+    """Handler C: first-order sigma-delta modulation between 0 and s_min.
+
+    Parameters
+    ----------
+    s_min : float
+        Minimum compressor command, -.
+    guard : CompressorGuard
+        Minimum run and stop times.
+    Ts : float, optional
+        Sampling period, s.
+    T_ref : float, optional
+        Modulation time scale, s; the switching threshold is s_min T_ref / 2.
+
+    Attributes
+    ----------
+    threshold : float
+        Switching threshold of the accumulator, s.
+    acc : float
+        Integrated requested minus delivered demand, s.
+    s_prev : float
+        Compressor command of the previous sample, -.
+    """
+
     def __init__(self, s_min: float, guard: CompressorGuard, Ts: float = 60.0,
-                 T_ref: float = 600.0):
+                 T_ref: float = 600.0) -> None:
         self.s_min, self.guard, self.Ts = s_min, guard, Ts
         self.threshold = 0.5 * s_min * T_ref
         self.acc = 0.0              # requested minus delivered demand, integrated, s
         self.s_prev = 0.0
 
     def step(self, t: float, v: float, T: float, T_set: float) -> tuple[float, float, bool]:
+        """Return the compressor command for demand v at time t.
+
+        Parameters
+        ----------
+        t : float
+            Current time, s.
+        v : float
+            Unsaturated demand from the PI, -.
+        T : float
+            Measured air temperature, degC (not used).
+        T_set : float
+            Set point, degC (not used).
+
+        Returns
+        -------
+        s : float
+            Compressor command, -.
+        u_applied : float
+            Demand the unit meets on average, for back-calculation, -.
+        integrate : bool
+            Always True.
+        """
         g = self.guard
         if v >= self.s_min:
             # modulating range: follow the demand directly

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 
 from . import psychro
+from ._typing import BoolArray, FloatArray
 from .inputs import Disturbances
 from .params import RoomParams
 from .plant import (
@@ -28,15 +30,44 @@ UNIT_FIELDS = ("Q_sens", "m_lat", "Q_coil", "P_el", "P_fan_in", "COP", "T_s", "T
 
 @dataclass
 class UnitLog:
-    """Record of the air-conditioning unit, present when a unit is simulated."""
+    """Record of the air-conditioning unit, present when a unit is simulated.
 
-    cmd: np.ndarray              # held commands [s, f, V_vent]
-    op: dict[str, np.ndarray]    # operating point, keys UNIT_FIELDS
-    M_coil: np.ndarray           # water held on the coil, kg
-    E_el: np.ndarray             # cumulative electrical energy since t_0, J
-    M_drain: np.ndarray          # cumulative condensate drained since t_0, kg
+    All arrays have one row per grid point of the owning `SimResult`.
 
-    def window(self, m: np.ndarray) -> UnitLog:
+    Attributes
+    ----------
+    cmd : FloatArray
+        Held commands, one row per grid point, columns [compressor speed s (-), indoor fan
+        speed f (-), ventilation flow V_vent (m3/s)].
+    op : dict of str to FloatArray
+        Operating point of the unit, keyed by the names in `UNIT_FIELDS`.
+    M_coil : FloatArray
+        Water held on the coil, kg.
+    E_el : FloatArray
+        Cumulative electrical energy since t_0, J.
+    M_drain : FloatArray
+        Cumulative condensate drained since t_0, kg.
+    """
+
+    cmd: FloatArray              # held commands [s, f, V_vent]
+    op: dict[str, FloatArray]    # operating point, keys UNIT_FIELDS
+    M_coil: FloatArray           # water held on the coil, kg
+    E_el: FloatArray             # cumulative electrical energy since t_0, J
+    M_drain: FloatArray          # cumulative condensate drained since t_0, kg
+
+    def window(self, m: BoolArray) -> UnitLog:
+        """Return the rows selected by a mask, with the cumulative quantities restarted.
+
+        Parameters
+        ----------
+        m : BoolArray
+            Boolean mask over the grid points.
+
+        Returns
+        -------
+        UnitLog
+            Selected rows; `E_el` and `M_drain` start from zero at the first selected row.
+        """
         return UnitLog(cmd=self.cmd[m], op={k: v[m] for k, v in self.op.items()},
                        M_coil=self.M_coil[m], E_el=self.E_el[m] - self.E_el[m][0],
                        M_drain=self.M_drain[m] - self.M_drain[m][0])
@@ -51,96 +82,173 @@ class SimResult:
     The cumulative quantities since t_0 are integrated alongside the state with the same method:
     boundary heat E_in (J), room water M_in (kg), CO2 (m3), and water from outdoor air and
     occupants W_ext (kg).
+
+    Attributes
+    ----------
+    t : FloatArray
+        Grid times t_0 .. t_N, s.
+    x : FloatArray
+        States, one row per grid point, columns indexed by the ``IDX_*`` constants of `plant`.
+    u : FloatArray
+        Plant inputs held on each step, one row per grid point, columns [Q_hvac_sens (W),
+        m_hvac_lat (kg/s), V_vent (m3/s)].
+    d : Disturbances
+        Disturbances sampled at the grid times.
+    q : dict of str to FloatArray
+        Heat flows (W) and water flows (kg/s) at the grid times, keyed by `plant.Fluxes` names.
+    E_in : FloatArray
+        Cumulative boundary heat into the room since t_0, J.
+    M_in : FloatArray
+        Cumulative water into the room since t_0, kg.
+    CO2_in : FloatArray
+        Cumulative CO2 into the room since t_0, m3.
+    W_ext : FloatArray
+        Cumulative water from outdoor air and occupants since t_0, kg.
+    p : RoomParams
+        Room parameters of the run.
+    method : str
+        Name of the integration method.
+    dt : float
+        Time step, s.
+    unit : UnitLog or None
+        Record of the air-conditioning unit, or None when no unit was simulated.
     """
 
-    t: np.ndarray
-    x: np.ndarray
-    u: np.ndarray
+    t: FloatArray
+    x: FloatArray
+    u: FloatArray
     d: Disturbances
-    q: dict[str, np.ndarray]
-    E_in: np.ndarray
-    M_in: np.ndarray
-    CO2_in: np.ndarray
-    W_ext: np.ndarray
+    q: dict[str, FloatArray]
+    E_in: FloatArray
+    M_in: FloatArray
+    CO2_in: FloatArray
+    W_ext: FloatArray
     p: RoomParams
     method: str
     dt: float
     unit: UnitLog | None = None
 
+    def require_unit(self) -> UnitLog:
+        """Return the unit record of a run simulated with an air-conditioning unit.
+
+        Returns
+        -------
+        UnitLog
+            The `unit` attribute.
+
+        Raises
+        ------
+        ValueError
+            If the run was simulated without a unit.
+        """
+        if self.unit is None:
+            raise ValueError("the result has no air-conditioning unit record")
+        return self.unit
+
     # ---- states and psychrometrics ----------------------------------------------------
     @property
-    def T_a(self) -> np.ndarray:
+    def T_a(self) -> FloatArray:
+        """Indoor air temperature, degC."""
         return self.x[:, IDX_TA]
 
     @property
-    def T_m(self) -> np.ndarray:
+    def T_m(self) -> FloatArray:
+        """Thermal-mass temperature, degC."""
         return self.x[:, IDX_TM]
 
     @property
-    def W(self) -> np.ndarray:
+    def W(self) -> FloatArray:
+        """Indoor humidity ratio, kg/kg."""
         return self.x[:, IDX_W]
 
     @property
-    def phi_b(self) -> np.ndarray:
+    def phi_b(self) -> FloatArray:
+        """Relative humidity of the wall buffer layer, fraction."""
         return self.x[:, IDX_PHI_B]
 
     @property
-    def CO2(self) -> np.ndarray:
+    def CO2(self) -> FloatArray:
+        """Indoor CO2 concentration, ppm."""
         return self.x[:, IDX_CO2]
 
     @property
-    def RH(self) -> np.ndarray:
+    def RH(self) -> FloatArray:
+        """Indoor relative humidity, fraction."""
         return psychro.RH_from_W(self.T_a, self.W)
 
     @property
-    def T_dew(self) -> np.ndarray:
+    def T_dew(self) -> FloatArray:
+        """Indoor dew-point temperature, degC."""
         return psychro.dew_point_from_W(self.W)
 
     @property
-    def T_dew_out(self) -> np.ndarray:
+    def T_dew_out(self) -> FloatArray:
+        """Outdoor dew-point temperature, degC."""
         return psychro.dew_point_from_W(self.d.W_o)
 
     # ---- balances ---------------------------------------------------------------------
     @property
-    def energy_stored(self) -> np.ndarray:
+    def energy_stored(self) -> FloatArray:
         """Change in stored sensible energy since t_0, J."""
         E = stored_energy(self.x, self.p)
-        return E - E[0]
+        return cast(FloatArray, E - E[0])
 
     @property
-    def energy_residual(self) -> np.ndarray:
+    def energy_residual(self) -> FloatArray:
         """Stored-energy change minus cumulative boundary heat, J (should be ~ round-off)."""
         return self.energy_stored - self.E_in
 
     @property
-    def water_stored(self) -> np.ndarray:
+    def water_stored(self) -> FloatArray:
+        """Change in water held by the room air and the buffer layer since t_0, kg."""
         M = stored_water(self.x, self.p)
-        return M - M[0]
+        return cast(FloatArray, M - M[0])
 
     @property
-    def water_residual(self) -> np.ndarray:
+    def water_residual(self) -> FloatArray:
+        """Stored-water change minus cumulative water into the room, kg."""
         return self.water_stored - self.M_in
 
     @property
-    def co2_residual(self) -> np.ndarray:
+    def co2_residual(self) -> FloatArray:
+        """Stored-CO2 change minus cumulative CO2 into the room, m3."""
         C = stored_co2(self.x, self.p)
-        return (C - C[0]) - self.CO2_in
+        return cast(FloatArray, (C - C[0]) - self.CO2_in)
 
     @property
-    def system_water_residual(self) -> np.ndarray:
+    def system_water_residual(self) -> FloatArray:
         """Water balance of room air + buffer + coil film: storage change - (in - drained), kg."""
         if self.unit is None:
             return self.water_stored - self.W_ext
         M_c = self.unit.M_coil - self.unit.M_coil[0]
-        return self.water_stored + M_c - (self.W_ext - self.unit.M_drain)
+        return cast(FloatArray, self.water_stored + M_c - (self.W_ext - self.unit.M_drain))
 
-    def boundary_heat_flow(self) -> np.ndarray:
-        """Net heat into the room at each grid point, W."""
-        return sum(self.q[name] for name in BOUNDARY_HEAT_FIELDS)
+    def boundary_heat_flow(self) -> FloatArray:
+        """Return the net heat into the room at each grid point.
+
+        Returns
+        -------
+        FloatArray
+            Sum of the flows named in `BOUNDARY_HEAT_FIELDS`, W.
+        """
+        return cast(FloatArray, sum(self.q[name] for name in BOUNDARY_HEAT_FIELDS))
 
     # ---- slicing ----------------------------------------------------------------------
     def window(self, t0: float, t1: float | None = None) -> SimResult:
-        """Sub-result on t0 <= t <= t1, with cumulative integrals restarted at t0."""
+        """Return the sub-result on t0 <= t <= t1, with cumulative integrals restarted at t0.
+
+        Parameters
+        ----------
+        t0 : float
+            Start time, s.
+        t1 : float or None, optional
+            End time, s. None selects up to the last grid time.
+
+        Returns
+        -------
+        SimResult
+            Rows with t0 - 1e-9 <= t <= t1 + 1e-9; cumulative quantities start from zero.
+        """
         t1 = self.t[-1] if t1 is None else t1
         m = (self.t >= t0 - 1e-9) & (self.t <= t1 + 1e-9)
         return SimResult(

@@ -15,6 +15,12 @@ from __future__ import annotations
 
 import numpy as np
 
+from ._typing import FloatArray, FloatOrArray
+
+"""Array of float64 values."""
+
+"""Scalar or array argument; arrays are broadcast element-wise."""
+
 P_ATM = 101_325.0  # standard atmospheric pressure, Pa
 EPS = 0.622        # ratio of molar masses M_w / M_da (rounded, as is usual in HVAC)
 
@@ -24,51 +30,174 @@ _B = 17.625   # -
 _C = 243.04   # degC
 
 
-def p_ws(T):
-    """Saturation vapour pressure over water, Pa."""
+def p_ws(T: FloatOrArray) -> FloatArray:
+    """Compute the saturation vapour pressure over liquid water (Magnus form).
+
+    Parameters
+    ----------
+    T : float or ndarray
+        Dry-bulb temperature, degC.
+
+    Returns
+    -------
+    ndarray
+        Saturation vapour pressure, Pa (a numpy scalar for scalar input).
+    """
     T = np.asarray(T, dtype=float)
-    return _A * np.exp(_B * T / (T + _C))
+    out: FloatArray = _A * np.exp(_B * T / (T + _C))
+    return out
 
 
-def W_from_pw(p_w, p=P_ATM):
-    """Humidity ratio from vapour partial pressure."""
+def W_from_pw(p_w: FloatOrArray, p: float = P_ATM) -> FloatArray:
+    """Compute the humidity ratio from the vapour partial pressure.
+
+    Parameters
+    ----------
+    p_w : float or ndarray
+        Water-vapour partial pressure, Pa.
+    p : float, optional
+        Total pressure, Pa.
+
+    Returns
+    -------
+    ndarray
+        Humidity ratio, kg/kg dry air.
+    """
     p_w = np.asarray(p_w, dtype=float)
-    return EPS * p_w / (p - p_w)
+    out: FloatArray = EPS * p_w / (p - p_w)
+    return out
 
 
-def pw_from_W(W, p=P_ATM):
-    """Vapour partial pressure from humidity ratio (inverse of W_from_pw)."""
+def pw_from_W(W: FloatOrArray, p: float = P_ATM) -> FloatArray:
+    """Compute the vapour partial pressure from the humidity ratio (inverse of `W_from_pw`).
+
+    Parameters
+    ----------
+    W : float or ndarray
+        Humidity ratio, kg/kg dry air.
+    p : float, optional
+        Total pressure, Pa.
+
+    Returns
+    -------
+    ndarray
+        Water-vapour partial pressure, Pa.
+    """
     W = np.asarray(W, dtype=float)
-    return W * p / (EPS + W)
+    out: FloatArray = W * p / (EPS + W)
+    return out
 
 
-def W_from_RH(T, RH, p=P_ATM):
-    """Humidity ratio at temperature T and relative humidity RH (fraction)."""
+def W_from_RH(T: FloatOrArray, RH: FloatOrArray, p: float = P_ATM) -> FloatArray:
+    """Compute the humidity ratio at a given temperature and relative humidity.
+
+    Parameters
+    ----------
+    T : float or ndarray
+        Dry-bulb temperature, degC.
+    RH : float or ndarray
+        Relative humidity, fraction 0..1.
+    p : float, optional
+        Total pressure, Pa.
+
+    Returns
+    -------
+    ndarray
+        Humidity ratio, kg/kg dry air.
+    """
     return W_from_pw(np.asarray(RH, dtype=float) * p_ws(T), p)
 
 
-def RH_from_W(T, W, p=P_ATM):
-    """Relative humidity (fraction) at temperature T and humidity ratio W."""
-    return pw_from_W(W, p) / p_ws(T)
+def RH_from_W(T: FloatOrArray, W: FloatOrArray, p: float = P_ATM) -> FloatArray:
+    """Compute the relative humidity at a given temperature and humidity ratio.
+
+    Parameters
+    ----------
+    T : float or ndarray
+        Dry-bulb temperature, degC.
+    W : float or ndarray
+        Humidity ratio, kg/kg dry air.
+    p : float, optional
+        Total pressure, Pa.
+
+    Returns
+    -------
+    ndarray
+        Relative humidity, fraction (not clipped to 0..1).
+    """
+    out: FloatArray = pw_from_W(W, p) / p_ws(T)
+    return out
 
 
-def dew_point_from_pw(p_w):
-    """Dew-point temperature, degC, from vapour partial pressure (inverse Magnus)."""
+def dew_point_from_pw(p_w: FloatOrArray) -> FloatArray:
+    """Compute the dew-point temperature from the vapour partial pressure (inverse Magnus).
+
+    Parameters
+    ----------
+    p_w : float or ndarray
+        Water-vapour partial pressure, Pa.
+
+    Returns
+    -------
+    ndarray
+        Dew-point temperature, degC.
+    """
     g = np.log(np.asarray(p_w, dtype=float) / _A)
-    return _C * g / (_B - g)
+    out: FloatArray = _C * g / (_B - g)
+    return out
 
 
-def dew_point(T, RH):
-    """Dew-point temperature, degC, at temperature T and relative humidity RH."""
+def dew_point(T: FloatOrArray, RH: FloatOrArray) -> FloatArray:
+    """Compute the dew-point temperature at a given temperature and relative humidity.
+
+    Parameters
+    ----------
+    T : float or ndarray
+        Dry-bulb temperature, degC.
+    RH : float or ndarray
+        Relative humidity, fraction 0..1.
+
+    Returns
+    -------
+    ndarray
+        Dew-point temperature, degC.
+    """
     return dew_point_from_pw(np.asarray(RH, dtype=float) * p_ws(T))
 
 
-def dew_point_from_W(W, p=P_ATM):
-    """Dew-point temperature, degC, from humidity ratio."""
+def dew_point_from_W(W: FloatOrArray, p: float = P_ATM) -> FloatArray:
+    """Compute the dew-point temperature from the humidity ratio.
+
+    Parameters
+    ----------
+    W : float or ndarray
+        Humidity ratio, kg/kg dry air.
+    p : float, optional
+        Total pressure, Pa.
+
+    Returns
+    -------
+    ndarray
+        Dew-point temperature, degC.
+    """
     return dew_point_from_pw(pw_from_W(W, p))
 
 
-def enthalpy(T, W):
-    """Specific enthalpy of moist air, kJ/kg dry air (reference: 0 degC, liquid water)."""
+def enthalpy(T: FloatOrArray, W: FloatOrArray) -> FloatArray:
+    """Compute the specific enthalpy of moist air (reference: dry air and liquid water at 0 degC).
+
+    Parameters
+    ----------
+    T : float or ndarray
+        Dry-bulb temperature, degC.
+    W : float or ndarray
+        Humidity ratio, kg/kg dry air.
+
+    Returns
+    -------
+    ndarray
+        Specific enthalpy, kJ/kg dry air.
+    """
     T = np.asarray(T, dtype=float)
-    return 1.006 * T + np.asarray(W, dtype=float) * (2501.0 + 1.86 * T)
+    out: FloatArray = 1.006 * T + np.asarray(W, dtype=float) * (2501.0 + 1.86 * T)
+    return out

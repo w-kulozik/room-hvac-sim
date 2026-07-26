@@ -80,7 +80,8 @@ which dominates at low speed (decision D31).
 Water held on the coil (mechanism as described by Henderson & Rengarajan, 1996).
 State M_c, kg, capacity M_max:
     compressor on   condensate first wets the coil and drains only once the coil is full:
-                    dM_c/dt = m_cond (1 - g),  drain = m_cond g,  g = 0 below 0.95 M_max -> 1 at M_max
+                    dM_c/dt = m_cond (1 - g),  drain = m_cond g,
+                    g = 0 below 0.95 M_max -> 1 at M_max
     fan only        the film re-evaporates into the air stream at constant air enthalpy:
                     W_out = W_in + (1 - BF)(W_sat(T_wb) - W_in) e(M_c),  dM_c/dt = -m_evap
                     with e(M_c) = 1 above 0.05 M_max, falling linearly to 0 when the coil is dry
@@ -100,7 +101,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import NamedTuple
+from typing import Literal, NamedTuple, overload
 
 from scipy.optimize import brentq
 
@@ -141,7 +142,29 @@ def _h_sat_and_slope(T: float) -> tuple[float, float]:
 
 
 def T_from_h_sat(h: float, T_guess: float = 10.0, tol: float = 1e-10) -> float:
-    """Temperature at which saturated air has enthalpy h (J/kg). Newton, converges in 3-5 steps."""
+    """Return the temperature at which saturated air has enthalpy ``h``.
+
+    Newton iteration on h_sat(T); it usually converges in 3-5 steps.
+
+    Parameters
+    ----------
+    h : float
+        Moist-air enthalpy, J/kg dry air.
+    T_guess : float, optional
+        Starting temperature, degC.
+    tol : float, optional
+        Convergence tolerance on the Newton step, K.
+
+    Returns
+    -------
+    float
+        Saturation temperature, degC.
+
+    Raises
+    ------
+    RuntimeError
+        If the iteration has not converged after 30 steps.
+    """
     T = T_guess
     for _ in range(30):
         hs, dh = _h_sat_and_slope(T)
@@ -161,6 +184,58 @@ def _dew_point(W: float) -> float:
 
 @dataclass(frozen=True)
 class ACParams:
+    """Rating data and model parameters of the split unit.
+
+    Attributes
+    ----------
+    Q_rated : float
+        Total (air-side) cooling capacity at rating conditions, W.
+    EER_rated : float
+        Net EER at rating, (Q - P_fan_in) / P_el with fans included, W/W.
+    T_o_rated : float
+        Outdoor temperature at rating, degC.
+    T_in_rated : float
+        Return-air dry-bulb temperature at rating, degC.
+    W_in_rated : float
+        Return-air humidity ratio at rating (19.7 degC wet bulb), kg/kg.
+    cap_slope : float
+        Compressor capacity loss per K of outdoor temperature at fixed T_r, 1/K (D30).
+    cap_slope_evap : float
+        Compressor capacity gain per K of evaporating temperature, 1/K (D30).
+    s_min : float
+        Minimum compressor speed fraction, -.
+    f_min : float
+        Minimum indoor fan speed fraction, -.
+    V_nom : float
+        Indoor airflow at full fan, m3/s.
+    BF_nom : float
+        Air-side bypass factor at full fan, -.
+    UA_evap : float
+        Conductance refrigerant to coil surface, W/K.
+    UA_cond : float
+        Conductance refrigerant to outdoor air, W/K.
+    eta_low_speed : float
+        Relative loss of cycle efficiency at s_min with respect to full speed, -.
+    dT_lift_min : float
+        Minimum condensing minus evaporating temperature difference, K.
+    P_fan_in_nom : float
+        Indoor fan power at full speed, W.
+    P_fan_in_base : float
+        Speed-independent part of the indoor fan power, W (D31).
+    P_fan_out : float
+        Outdoor fan power while the compressor runs, W.
+    T_evap_min : float
+        Frost-protection limit on the evaporating temperature, degC.
+    tau_start : float
+        Time constant of the capacity ramp after a start, s (D9).
+    M_coil_max : float
+        Water the coil holds before it drains, kg.
+    film_ramp : float
+        Width of the full and dry ramps, fraction of M_coil_max, -.
+    rho_air : float
+        Air density used to convert airflow to mass flow, kg/m3.
+    """
+
     Q_rated: float = 2500.0          # total (air-side) cooling capacity at rating conditions, W
     EER_rated: float = 3.5           # net EER at rating: (Q - P_fan_in) / P_el, fans included
     T_o_rated: float = 35.0          # outdoor, degC
@@ -187,14 +262,46 @@ class ACParams:
 
     @property
     def m_nom(self) -> float:
+        """Return the indoor air mass flow at full fan, kg/s."""
         return self.rho_air * self.V_nom
 
     @property
     def NTU_nom(self) -> float:
+        """Return the air-side NTU at full fan, -ln(BF_nom), dimensionless."""
         return -math.log(self.BF_nom)
 
 
 class CoilState(NamedTuple):
+    """Operating point of the unit at one instant.
+
+    Attributes
+    ----------
+    Q_sens : float
+        Sensible heat removed from the air stream, W.
+    m_lat : float
+        Water removed from the air, kg/s (negative when the film re-evaporates).
+    Q_coil : float
+        Heat taken by the refrigerant, W.
+    P_el : float
+        Total electrical power, W.
+    P_fan_in : float
+        Indoor fan power, W (ends up as heat in the room).
+    COP : float
+        Q_coil / P_comp (compressor only), W/W.
+    T_s : float
+        Mean coil surface temperature, degC.
+    T_out : float
+        Supply-air temperature, degC.
+    W_out : float
+        Supply-air humidity ratio, kg/kg.
+    wet_fraction : float
+        Wetted fraction of the coil surface, 0 (dry) to 1.
+    dM_coil : float
+        Rate of change of the water held on the coil, kg/s.
+    m_drain : float
+        Condensate leaving through the drain, kg/s.
+    """
+
     Q_sens: float      # sensible heat removed from the air stream, W
     m_lat: float       # water removed from the air, kg/s (negative when the film re-evaporates)
     Q_coil: float      # heat taken by the refrigerant, W
@@ -215,12 +322,41 @@ OFF_STATE = CoilState(Q_sens=0.0, m_lat=0.0, Q_coil=0.0, P_el=0.0, P_fan_in=0.0,
 
 
 def net_cooling(st: CoilState, T_in: float) -> float:
-    """Cooling delivered to the room, W: sensible + latent minus the indoor fan heat."""
+    """Return the cooling delivered to the room: sensible + latent minus the indoor fan heat.
+
+    Parameters
+    ----------
+    st : CoilState
+        Operating point of the unit.
+    T_in : float
+        Return-air temperature, degC, at which the latent heat is evaluated.
+
+    Returns
+    -------
+    float
+        Net cooling, W.
+    """
     return st.Q_sens + st.m_lat * (H_FG0 + CP_V * T_in) - st.P_fan_in
 
 
 class CoilOutlet(NamedTuple):
-    Q: float           # air-side total capacity m (h_in - h_out), W
+    """Air-side result of the coil model at a given evaporating temperature.
+
+    Attributes
+    ----------
+    Q : float
+        Air-side total capacity m (h_in - h_out), W.
+    T_out : float
+        Outlet air temperature, degC.
+    W_out : float
+        Outlet air humidity ratio, kg/kg.
+    T_s : float
+        Mean coil surface temperature, degC.
+    wet_fraction : float
+        Wetted fraction of the coil surface, 0 (dry) to 1.
+    """
+
+    Q: float          # air-side total capacity m (h_in - h_out), W
     T_out: float
     W_out: float
     T_s: float         # mean surface temperature, degC
@@ -229,24 +365,63 @@ class CoilOutlet(NamedTuple):
 
 @dataclass(frozen=True)
 class ACUnit:
+    """Inverter split air conditioner built from the coil, compressor and cycle models.
+
+    Attributes
+    ----------
+    p : ACParams
+        Rating data and model parameters.
+    """
+
     p: ACParams = field(default_factory=ACParams)
 
     # -- coil -------------------------------------------------------------------------------
     def bypass_factor(self, f: float) -> float:
-        """Air-side bypass factor exp(-NTU_a) at fan fraction f."""
+        """Return the air-side bypass factor exp(-NTU_a).
+
+        Parameters
+        ----------
+        f : float
+            Indoor fan speed fraction, > 0.
+
+        Returns
+        -------
+        float
+            Bypass factor, dimensionless.
+        """
         return math.exp(-self.p.NTU_nom * f ** -0.4)
 
     def fan_power(self, f: float) -> float:
-        """Indoor fan electrical power at fan fraction f > 0, W."""
+        """Return the indoor fan electrical power.
+
+        Parameters
+        ----------
+        f : float
+            Indoor fan speed fraction, > 0.
+
+        Returns
+        -------
+        float
+            Fan power P_0 + (P_nom - P_0) f^3, W.
+        """
         p = self.p
         return p.P_fan_in_base + (p.P_fan_in_nom - p.P_fan_in_base) * f ** 3
 
-    def _coil(self, T_r: float, f: float, T_in: float, W_in: float, outlet: bool):
+    @overload
+    def _coil(self, T_r: float, f: float, T_in: float, W_in: float,
+              outlet: Literal[False]) -> float: ...
+
+    @overload
+    def _coil(self, T_r: float, f: float, T_in: float, W_in: float,
+              outlet: Literal[True]) -> CoilOutlet: ...
+
+    def _coil(self, T_r: float, f: float, T_in: float, W_in: float,
+              outlet: bool) -> float | CoilOutlet:
         """Coil with refrigerant at T_r. Returns Q (W) or, with ``outlet``, a CoilOutlet."""
         p = self.p
         m = p.m_nom * f
         cpm = CP_A + CP_V * W_in
-        NTU_a = p.NTU_nom * f ** -0.4
+        NTU_a: float = p.NTU_nom * f ** -0.4
         UA_a = NTU_a * m * cpm
         UA_r = p.UA_evap
         r = UA_a / (UA_a + UA_r)
@@ -269,10 +444,7 @@ class ACUnit:
         # wet part: enthalpy-based conductance with the secant slope of h_sat
         T_up = min(T_dp, T_r + r * dT_in)                 # surface where the wet part starts
         h_r, dh_r = _h_sat_and_slope(T_r)
-        if T_up - T_r > 1e-6:
-            c_s = (_h_sat_and_slope(T_up)[0] - h_r) / (T_up - T_r)
-        else:
-            c_s = dh_r
+        c_s = (_h_sat_and_slope(T_up)[0] - h_r) / (T_up - T_r) if T_up - T_r > 1e-6 else dh_r
         UA_h = 1.0 / (c_s / UA_r + cpm / UA_a)
         h_b = _h(T_b, W_in)
         h_out = h_r + (h_b - h_r) * math.exp(-UA_h * wet / m)
@@ -298,23 +470,87 @@ class ACUnit:
         return CoilOutlet(Q, T_out, W_out, T_r + Q / UA_r, wet)
 
     def coil_at(self, T_r: float, f: float, T_in: float, W_in: float) -> CoilOutlet:
-        """Coil outlet with the refrigerant evaporating at T_r (degC), fan fraction f."""
+        """Return the coil outlet with the refrigerant evaporating at T_r.
+
+        Parameters
+        ----------
+        T_r : float
+            Evaporating temperature, degC.
+        f : float
+            Indoor fan speed fraction, > 0.
+        T_in : float
+            Entering (return) air temperature, degC.
+        W_in : float
+            Entering air humidity ratio, kg/kg.
+
+        Returns
+        -------
+        CoilOutlet
+            Air-side capacity (W), outlet state and surface temperature.
+        """
         return self._coil(T_r, f, T_in, W_in, True)
 
     def T_evap(self, Q: float, f: float, T_in: float, W_in: float) -> float:
-        """Evaporating temperature at which the coil takes air-side capacity Q, degC."""
+        """Return the evaporating temperature at which the coil takes air-side capacity Q.
+
+        Solved with Brent's method on [T_in - 80, T_in].
+
+        Parameters
+        ----------
+        Q : float
+            Air-side total capacity, W. For Q <= 0 the result is T_in.
+        f : float
+            Indoor fan speed fraction, > 0.
+        T_in : float
+            Entering air temperature, degC.
+        W_in : float
+            Entering air humidity ratio, kg/kg.
+
+        Returns
+        -------
+        float
+            Evaporating temperature, degC.
+        """
         if Q <= 0.0:
             return T_in
-        return brentq(lambda T: self._coil(T, f, T_in, W_in, False) - Q, T_in - 80.0, T_in,
-                      xtol=1e-12, rtol=1e-14)
+        return float(brentq(lambda T: self._coil(T, f, T_in, W_in, False) - Q, T_in - 80.0,
+                            T_in, xtol=1e-12, rtol=1e-14))
 
     # -- capacity and cycle -----------------------------------------------------------------
     def capacity(self, s: float, T_o: float) -> float:
-        """Compressor capacity at the rated evaporating temperature, W."""
+        """Return the compressor capacity at the rated evaporating temperature.
+
+        Parameters
+        ----------
+        s : float
+            Compressor speed fraction.
+        T_o : float
+            Outdoor temperature, degC.
+
+        Returns
+        -------
+        float
+            Capacity, W.
+        """
         return s * self.p.Q_rated * (1.0 - self.p.cap_slope * (T_o - self.p.T_o_rated))
 
     def compressor_capacity(self, s: float, T_r: float, T_o: float) -> float:
-        """Capacity of the compressor at speed s with the refrigerant evaporating at T_r, W."""
+        """Return the compressor capacity with the refrigerant evaporating at T_r.
+
+        Parameters
+        ----------
+        s : float
+            Compressor speed fraction.
+        T_r : float
+            Evaporating temperature, degC.
+        T_o : float
+            Outdoor temperature, degC.
+
+        Returns
+        -------
+        float
+            Capacity Q_comp(T_r), W.
+        """
         return self.capacity(s, T_o) * (1.0 + self.p.cap_slope_evap * (T_r - self.T_r_rated))
 
     @cached_property
@@ -324,17 +560,52 @@ class ACUnit:
         return self.T_evap(p.Q_rated, 1.0, p.T_in_rated, p.W_in_rated)
 
     def operating_T_r(self, s: float, f: float, T_in: float, W_in: float, T_o: float) -> float:
-        """Evaporating temperature where compressor and coil capacities balance, with frost
-        protection (T_r >= T_evap_min).
+        """Return the evaporating temperature where compressor and coil capacities balance.
+
+        Frost protection holds the result at T_r >= T_evap_min.
+
+        Parameters
+        ----------
+        s : float
+            Compressor speed fraction (already clipped to [s_min, 1]).
+        f : float
+            Indoor fan speed fraction, > 0.
+        T_in : float
+            Return-air temperature, degC.
+        W_in : float
+            Return-air humidity ratio, kg/kg.
+        T_o : float
+            Outdoor temperature, degC.
+
+        Returns
+        -------
+        float
+            Evaporating temperature, degC.
         """
         T_min = self.p.T_evap_min
-        g = lambda T: self._coil(T, f, T_in, W_in, False) - self.compressor_capacity(s, T, T_o)
+
+        def g(T: float) -> float:
+            return self._coil(T, f, T_in, W_in, False) - self.compressor_capacity(s, T, T_o)
+
         if T_min < T_in and g(T_min) <= 0.0:
             return T_min                     # the compressor slows to hold T_evap_min
-        return brentq(g, T_in - 80.0, T_in, xtol=1e-12, rtol=1e-14)
+        return float(brentq(g, T_in - 80.0, T_in, xtol=1e-12, rtol=1e-14))
 
     def eta_rel(self, s: float) -> float:
-        """Cycle efficiency relative to full speed; compressor losses grow at low speed."""
+        """Return the cycle efficiency relative to full speed.
+
+        Compressor losses grow quadratically as the speed falls towards s_min.
+
+        Parameters
+        ----------
+        s : float
+            Compressor speed fraction.
+
+        Returns
+        -------
+        float
+            Relative efficiency, dimensionless (1 at full speed).
+        """
         x = (1.0 - s) / (1.0 - self.p.s_min)
         return 1.0 - self.p.eta_low_speed * x * x
 
@@ -367,8 +638,28 @@ class ACUnit:
         return (cop * (p.T_o_rated + 273.15 - T_ev + a) + a) / T_ev
 
     # -- full operating point ---------------------------------------------------------------
-    def streams(self, T_r: float, f: float, T_in: float, W_in: float) -> tuple:
-        """(Q_sens, m_lat, Q_coil, T_s, T_out, W_out, wet_fraction) with refrigerant at T_r."""
+    def streams(
+        self, T_r: float, f: float, T_in: float, W_in: float
+    ) -> tuple[float, float, float, float, float, float, float]:
+        """Return the heat and moisture streams with the refrigerant at T_r.
+
+        Parameters
+        ----------
+        T_r : float
+            Evaporating temperature, degC.
+        f : float
+            Indoor fan speed fraction, > 0.
+        T_in : float
+            Return-air temperature, degC.
+        W_in : float
+            Return-air humidity ratio, kg/kg.
+
+        Returns
+        -------
+        tuple of float
+            (Q_sens [W], m_lat [kg/s], Q_coil [W], T_s [degC], T_out [degC],
+            W_out [kg/kg], wet_fraction [-]).
+        """
         out = self.coil_at(T_r, f, T_in, W_in)
         m = self.p.m_nom * f
         m_lat = m * (W_in - out.W_out)
@@ -386,7 +677,26 @@ class ACUnit:
         return min(max(M_c / w, 0.0), 1.0)
 
     def fan_only(self, f: float, T_in: float, W_in: float, M_c: float) -> CoilState:
-        """Fan running with the compressor off: the water film re-evaporates adiabatically."""
+        """Return the operating point with the fan running and the compressor off.
+
+        The water film re-evaporates into the air stream at constant air enthalpy.
+
+        Parameters
+        ----------
+        f : float
+            Indoor fan speed fraction, clipped to [f_min, 1].
+        T_in : float
+            Return-air temperature, degC.
+        W_in : float
+            Return-air humidity ratio, kg/kg.
+        M_c : float
+            Water held on the coil, kg.
+
+        Returns
+        -------
+        CoilState
+            Operating point; m_lat <= 0 and dM_coil = m_lat.
+        """
         p = self.p
         f = min(max(f, p.f_min), 1.0)
         m = p.m_nom * f
@@ -405,11 +715,31 @@ class ACUnit:
 
     def operate(self, s: float, f: float, T_in: float, W_in: float, T_o: float,
                 ramp: float = 1.0, M_c: float | None = None) -> CoilState:
-        """Operating point for commands (s, f) with return air (T_in, W_in) and outdoor T_o.
+        """Return the operating point for commands (s, f).
 
-        ``ramp`` in [0, 1] scales the delivered capacity after a start; the compressor already
-        draws the power of the requested capacity. ``M_c`` is the water held on the coil; when
-        it is None the coil is treated as permanently full (steady wet-coil operation).
+        Parameters
+        ----------
+        s : float
+            Compressor speed fraction; <= 0 is off, otherwise clipped to [s_min, 1].
+        f : float
+            Indoor fan speed fraction; <= 0 is off, otherwise clipped to [f_min, 1].
+        T_in : float
+            Return-air temperature, degC.
+        W_in : float
+            Return-air humidity ratio, kg/kg.
+        T_o : float
+            Outdoor temperature, degC.
+        ramp : float, optional
+            Fraction in [0, 1] of the requested capacity delivered after a start; the
+            compressor already draws the power of the requested capacity.
+        M_c : float or None, optional
+            Water held on the coil, kg. None treats the coil as permanently full (steady
+            wet-coil operation).
+
+        Returns
+        -------
+        CoilState
+            Operating point of the unit (OFF_STATE when both s and f are <= 0).
         """
         p = self.p
         if s <= 0.0:
@@ -434,5 +764,16 @@ class ACUnit:
                          dM_coil=m_lat * (1.0 - g), m_drain=m_lat * g)
 
     def start_ramp(self, t_on: float) -> float:
-        """Capacity fraction t_on seconds after a compressor start."""
+        """Return the capacity fraction after a compressor start.
+
+        Parameters
+        ----------
+        t_on : float
+            Time since the start, s (negative values count as 0).
+
+        Returns
+        -------
+        float
+            1 - exp(-t_on / tau_start), dimensionless.
+        """
         return 1.0 - math.exp(-max(t_on, 0.0) / self.p.tau_start)

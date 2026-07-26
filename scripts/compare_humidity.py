@@ -12,6 +12,7 @@ The robustness runs keep the controllers tuned for the nominal unit and change t
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from roomsim.controllers import (
     CoilCascade,
     FanHumidityPI,
     OnOffThermostat,
+    PIUnitController,
     VentilationSchedule,
     make_pi_controller,
 )
@@ -30,53 +32,61 @@ from roomsim.metrics import compute
 from roomsim.params import RoomParams
 from roomsim.plant import equilibrium_state
 from roomsim.plotting import apply_style, plot_humidity_day
-from roomsim.simulate import simulate
+from roomsim.results import SimResult
+from roomsim.simulate import Controller, simulate
 
 FIG = Path(__file__).resolve().parents[1] / "figures"
 T_SET, RH_SET = 25.0, 0.55
 WARMUP_DAYS, DAYS = 3, 3
 
 
-def rh_std_occ(r) -> float:
+def rh_std_occ(r: SimResult) -> float:
+    """Return the standard deviation of the indoor RH over the occupied grid points, %."""
     occ = np.asarray(r.d.n_occ) > 0
     return float((100 * r.RH[occ]).std())
 
 
-def fan_travel_per_h(r) -> float:
-    """Total variation of the fan command per running hour: actuator wear and noise."""
-    run = r.unit.cmd[:, 0] > 0
-    f = r.unit.cmd[run, 1]
+def fan_travel_per_h(r: SimResult) -> float:
+    """Return the total variation of the fan command per running hour, 1/h.
+
+    Only grid points with the compressor running are counted; the value indicates actuator
+    wear and noise. `r` must have a unit record.
+    """
+    cmd = r.require_unit().cmd
+    run = cmd[:, 0] > 0
+    f = cmd[run, 1]
     return float(np.abs(np.diff(f)).sum() / (run.sum() * r.dt / 3600.0))
 
 
 def main() -> None:
+    """Run the humidity controllers and the robustness cases; write the tables and the figure."""
     FIG.mkdir(exist_ok=True)
     apply_style()
     p, S, vent = RoomParams(), SummerScenario(), VentilationSchedule()
     nominal = ACUnit()
     x0 = equilibrium_state(26.0, 26.0, float(S.W_o(0.0)))
 
-    def temperature_loop():
+    def temperature_loop() -> PIUnitController:
         return make_pi_controller("sigma-delta", p, nominal, T_set=T_SET, ventilation=vent)
 
-    builders = {
+    builders: dict[str, Callable[[], Controller]] = {
         "PI (C), full fan": temperature_loop,
         "H1 fan RH-PI": lambda: FanHumidityPI(temperature_loop(), RH_set=RH_SET),
         "H2 cascade": lambda: CoilCascade(temperature_loop(), RH_set=RH_SET),
     }
 
-    def run(build, unit):
+    def run(build: Callable[[], Controller], unit: ACUnit) -> SimResult:
         r = simulate(p, S, x0, (WARMUP_DAYS + DAYS) * DAY, controller=build(), unit=unit)
         return r.window(WARMUP_DAYS * DAY)
 
     results = {name: run(b, nominal) for name, b in builders.items()}
     onoff = run(lambda: OnOffThermostat(T_set=T_SET, ventilation=vent), nominal)
 
-    lines = ["| Controller | Energy (kWh) | Water removed (kg) | RH mean occ. (%) | RH std occ. (%) | "
-             "h RH > 60 % occ. | T rms occ. (K) | Starts |", "|" + "---|" * 8]
+    lines = ["| Controller | Energy (kWh) | Water removed (kg) | RH mean occ. (%) | "
+             "RH std occ. (%) | h RH > 60 % occ. | T rms occ. (K) | Starts |", "|" + "---|" * 8]
     for name, r in {**results, "On/off (reference)": onoff}.items():
         m = compute(r, T_SET)
-        water = float(r.unit.M_drain[-1])          # condensate drained in the window, kg
+        water = float(r.require_unit().M_drain[-1])  # condensate drained in the window, kg
         lines.append(f"| {name} | {m.energy_kWh:.2f} | {water:.1f} | {m.RH_mean_occ:.1f} | "
                      f"{rh_std_occ(r):.2f} | {m.h_RH60_occ:.1f} | {m.T_rms_occ:.2f} | {m.starts} |")
     table = "\n".join(lines)
@@ -95,7 +105,8 @@ def main() -> None:
                        f"{fan_travel_per_h(r):.2f} |")
     robustness = "\n".join(rob)
 
-    print(f"Set points {T_SET} °C, {100 * RH_SET:.0f} % RH; three days after {WARMUP_DAYS} warm-up days\n")
+    print(f"Set points {T_SET} °C, {100 * RH_SET:.0f} % RH; three days after {WARMUP_DAYS} "
+          "warm-up days\n")
     print(table)
     print("\nControllers tuned for the nominal unit, run on a different one\n")
     print(robustness)

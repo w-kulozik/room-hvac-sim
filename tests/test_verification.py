@@ -1,5 +1,6 @@
 """Verification against analytical solutions (specification, section 5)."""
 
+import itertools
 from dataclasses import replace
 
 import numpy as np
@@ -139,10 +140,11 @@ def test_matches_scipy_radau_on_full_scenario():
     # integrate segment by segment between occupancy switches, holding n_occ as the simulator does
     breaks = [0.0, 8 * HOUR, 18 * HOUR, DAY]
     x = x0.copy()
-    for a, b in zip(breaks[:-1], breaks[1:]):
+    for a, b in itertools.pairwise(breaks):
         held = S(a).n_occ
-        sol = solve_ivp(lambda t, y: rhs(t, y, U_OFF, S(t)._replace(n_occ=held), P),
-                        (a, b), x, method="Radau", rtol=1e-11, atol=[1e-9, 1e-9, 1e-13, 1e-11, 1e-7])
+        sol = solve_ivp(lambda t, y, held=held: rhs(t, y, U_OFF, S(t)._replace(n_occ=held), P),
+                        (a, b), x, method="Radau", rtol=1e-11,
+                        atol=[1e-9, 1e-9, 1e-13, 1e-11, 1e-7])
         x = sol.y[:, -1]
     assert r.x[-1, [IDX_TA, IDX_TM]] == pytest.approx(x[[IDX_TA, IDX_TM]], abs=1e-6)
     assert r.x[-1, IDX_W] == pytest.approx(x[IDX_W], abs=1e-10)

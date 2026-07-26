@@ -16,6 +16,7 @@ from typing import NamedTuple, Protocol
 import numpy as np
 
 from . import psychro
+from ._typing import FloatArray, FloatOrArray
 
 DAY = 86_400.0
 HOUR = 3_600.0
@@ -27,20 +28,63 @@ PIECEWISE_CONSTANT = ("n_occ",)
 
 
 class Disturbances(NamedTuple):
-    T_o: np.ndarray | float      # outdoor dry-bulb temperature, degC
-    W_o: np.ndarray | float      # outdoor humidity ratio, kg/kg
-    G_sol: np.ndarray | float    # solar irradiance on the window, W/m2
-    n_occ: np.ndarray | float    # number of occupants, -
-    C_o: np.ndarray | float      # outdoor CO2 concentration, ppm
+    """Disturbance values at one time or over an array of times.
+
+    Attributes
+    ----------
+    T_o : float or ndarray
+        Outdoor dry-bulb temperature, degC.
+    W_o : float or ndarray
+        Outdoor humidity ratio, kg/kg dry air.
+    G_sol : float or ndarray
+        Solar irradiance on the window plane, W/m2.
+    n_occ : float or ndarray
+        Number of occupants, -.
+    C_o : float or ndarray
+        Outdoor CO2 concentration, ppm.
+    """
+
+    T_o: FloatArray | float      # outdoor dry-bulb temperature, degC
+    W_o: FloatArray | float      # outdoor humidity ratio, kg/kg
+    G_sol: FloatArray | float    # solar irradiance on the window, W/m2
+    n_occ: FloatArray | float    # number of occupants, -
+    C_o: FloatArray | float      # outdoor CO2 concentration, ppm
 
 
 class Scenario(Protocol):
-    def __call__(self, t) -> Disturbances: ...
+    """Callable that returns the disturbances at time t."""
+
+    def __call__(self, t: FloatOrArray) -> Disturbances:
+        """Evaluate the disturbances.
+
+        Parameters
+        ----------
+        t : float or ndarray
+            Time from midnight of day 0, s.
+
+        Returns
+        -------
+        Disturbances
+            Values at t, with the shape of t.
+        """
+        ...
 
 
-def hour_of_day(t):
-    """Clock hour in [0, 24) for time t in seconds."""
-    return np.mod(np.asarray(t, dtype=float), DAY) / HOUR
+def hour_of_day(t: FloatOrArray) -> FloatArray:
+    """Compute the clock hour in [0, 24).
+
+    Parameters
+    ----------
+    t : float or ndarray
+        Time from midnight of day 0, s (negative values allowed).
+
+    Returns
+    -------
+    ndarray
+        Clock hour, h (a numpy scalar for scalar input).
+    """
+    h: FloatArray = np.mod(np.asarray(t, dtype=float), DAY) / HOUR
+    return h
 
 
 @dataclass(frozen=True)
@@ -56,6 +100,32 @@ class SummerScenario:
     G_sol half-sine between sunrise and sunset, zero at night.
     n_occ step function, occupied on [occ_start, occ_end) with n_people; or, if ``occupancy`` is
           given, a profile of (start_h, end_h, people) intervals (zero outside them).
+
+    Attributes
+    ----------
+    T_mean : float
+        Daily mean outdoor temperature, degC.
+    T_amp : float
+        Amplitude of the outdoor-temperature sine, K.
+    phase_h : float
+        Phase of the outdoor-temperature sine, h.
+    RH_o : float
+        Outdoor relative humidity, fraction 0..1.
+    constant_W : bool
+        If True, W_o is held constant at its value for (T_mean, RH_o); otherwise RH_o is held.
+    G_max : float
+        Peak solar irradiance on the window, W/m2.
+    sunrise_h, sunset_h : float
+        Start and end of the solar half-sine, h.
+    n_people : float
+        Occupants during the occupied period, -.
+    occ_start_h, occ_end_h : float
+        Occupied period [occ_start_h, occ_end_h), h.
+    C_o : float
+        Outdoor CO2 concentration, ppm.
+    occupancy : tuple of (float, float, float), optional
+        Intervals (start_h, end_h, people), h, h, -. If given, it replaces n_people and the
+        occupied period; a later interval overrides an earlier one where they overlap.
     """
 
     T_mean: float = 26.0
@@ -70,25 +140,76 @@ class SummerScenario:
     occ_start_h: float = 8.0
     occ_end_h: float = 18.0
     C_o: float = 420.0
-    occupancy: tuple | None = None
+    occupancy: tuple[tuple[float, float, float], ...] | None = None
 
-    def T_o(self, t):
+    def T_o(self, t: FloatOrArray) -> FloatArray:
+        """Compute the outdoor dry-bulb temperature.
+
+        Parameters
+        ----------
+        t : float or ndarray
+            Time from midnight of day 0, s.
+
+        Returns
+        -------
+        ndarray
+            Outdoor temperature, degC.
+        """
         t = np.asarray(t, dtype=float)
         return self.T_mean + self.T_amp * np.sin(2 * np.pi * (t / DAY - self.phase_h / 24.0))
 
-    def W_o(self, t):
+    def W_o(self, t: FloatOrArray) -> FloatArray:
+        """Compute the outdoor humidity ratio.
+
+        Parameters
+        ----------
+        t : float or ndarray
+            Time from midnight of day 0, s.
+
+        Returns
+        -------
+        ndarray
+            Outdoor humidity ratio, kg/kg dry air.
+        """
         if self.constant_W:
             ones = np.ones_like(np.asarray(t, dtype=float))
-            return psychro.W_from_RH(self.T_mean, self.RH_o) * ones
+            W: FloatArray = psychro.W_from_RH(self.T_mean, self.RH_o) * ones
+            return W
         return psychro.W_from_RH(self.T_o(t), self.RH_o)
 
-    def G_sol(self, t):
+    def G_sol(self, t: FloatOrArray) -> FloatArray:
+        """Compute the solar irradiance on the window.
+
+        Parameters
+        ----------
+        t : float or ndarray
+            Time from midnight of day 0, s.
+
+        Returns
+        -------
+        ndarray
+            Irradiance, W/m2 (half-sine between sunrise and sunset, zero otherwise).
+        """
         h = hour_of_day(t)
         day_len = self.sunset_h - self.sunrise_h
         up = (h >= self.sunrise_h) & (h < self.sunset_h)
-        return np.where(up, self.G_max * np.sin(np.pi * (h - self.sunrise_h) / day_len), 0.0)
+        G: FloatArray = np.where(up, self.G_max * np.sin(np.pi * (h - self.sunrise_h) / day_len),
+                                 0.0)
+        return G
 
-    def n_occ(self, t):
+    def n_occ(self, t: FloatOrArray) -> FloatArray:
+        """Compute the number of occupants.
+
+        Parameters
+        ----------
+        t : float or ndarray
+            Time from midnight of day 0, s.
+
+        Returns
+        -------
+        ndarray
+            Number of occupants, -.
+        """
         h = hour_of_day(t)
         if self.occupancy is None:
             occupied = (h >= self.occ_start_h) & (h < self.occ_end_h)
@@ -98,7 +219,19 @@ class SummerScenario:
             n = np.where((h >= start) & (h < end), people, n)
         return n
 
-    def __call__(self, t) -> Disturbances:
+    def __call__(self, t: FloatOrArray) -> Disturbances:
+        """Evaluate all disturbances.
+
+        Parameters
+        ----------
+        t : float or ndarray
+            Time from midnight of day 0, s.
+
+        Returns
+        -------
+        Disturbances
+            Values at t.
+        """
         ones = np.ones_like(np.asarray(t, dtype=float))
         return Disturbances(self.T_o(t), self.W_o(t), self.G_sol(t), self.n_occ(t), self.C_o * ones)
 
@@ -109,6 +242,19 @@ class ConstantInputs:
 
     A step in outdoor conditions at t = 0 is modelled as constant inputs together with
     an initial state that differs from the new equilibrium.
+
+    Attributes
+    ----------
+    T_o : float
+        Outdoor dry-bulb temperature, degC.
+    W_o : float
+        Outdoor humidity ratio, kg/kg dry air.
+    G_sol : float
+        Solar irradiance on the window, W/m2.
+    n_occ : float
+        Number of occupants, -.
+    C_o : float
+        Outdoor CO2 concentration, ppm.
     """
 
     T_o: float = 26.0
@@ -117,7 +263,19 @@ class ConstantInputs:
     n_occ: float = 0.0
     C_o: float = 420.0
 
-    def __call__(self, t) -> Disturbances:
+    def __call__(self, t: FloatOrArray) -> Disturbances:
+        """Evaluate the disturbances.
+
+        Parameters
+        ----------
+        t : float or ndarray
+            Time from midnight of day 0, s.
+
+        Returns
+        -------
+        Disturbances
+            The constant values broadcast to the shape of t.
+        """
         ones = np.ones_like(np.asarray(t, dtype=float))
         return Disturbances(self.T_o * ones, self.W_o * ones, self.G_sol * ones,
                             self.n_occ * ones, self.C_o * ones)

@@ -81,7 +81,9 @@ class HeldOutput:
     def step(self, t, y):
         T_a, RH = y[0], y[1]
         W = float(psychro.W_from_RH(T_a, RH))
-        x = np.zeros(5); x[IDX_TA] = T_a; x[IDX_W] = W
+        x = np.zeros(5)
+        x[IDX_TA] = T_a
+        x[IDX_W] = W
         u, _ = unit_input(UNIT, np.array([self.s, 1.0, 0.0]), 1.0, x, HOT(t))
         return u
 
@@ -146,6 +148,7 @@ def test_closed_loop_with_sampled_pi_is_fourth_order():
 
 def test_holding_the_unit_output_is_only_first_order():
     def run(dt):
-        return simulate(P, HOT, X_HOT, 4 * HOUR, dt=dt, controller=HeldOutput(0.8), dt_ctrl=dt).x[-1]
+        return simulate(P, HOT, X_HOT, 4 * HOUR, dt=dt, controller=HeldOutput(0.8),
+                        dt_ctrl=dt).x[-1]
     order = convergence_order(DTS, _final_error(DTS, run))
     assert order == pytest.approx(1.0, abs=0.15)

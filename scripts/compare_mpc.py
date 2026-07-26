@@ -26,7 +26,8 @@ from roomsim.metrics import compute, energy_cost
 from roomsim.params import RoomParams
 from roomsim.plant import equilibrium_state
 from roomsim.plotting import apply_style, plot_mpc_day
-from roomsim.simulate import simulate
+from roomsim.results import SimResult
+from roomsim.simulate import Controller, simulate
 from roomsim.tariff import TimeOfUseTariff
 
 FIG = Path(__file__).resolve().parents[1] / "figures"
@@ -35,6 +36,7 @@ MISMATCH = {"C_m": 1.2, "furniture_factor": 0.8, "H_mo": 0.8, "h_i": 1.2, "g_win
 
 
 def main() -> None:
+    """Run the PI and MPC cases; write figures/mpc_comparison.md and figures/mpc_day.png."""
     FIG.mkdir(exist_ok=True)
     apply_style()
     p, unit, S, vent = RoomParams(), ACUnit(), SummerScenario(), VentilationSchedule()
@@ -43,19 +45,20 @@ def main() -> None:
     x0 = equilibrium_state(26.0, 26.0, float(S.W_o(0.0)))
     model = RCModel(p)
 
-    controllers = {
+    controllers: dict[str, Controller] = {
         "PI, 25 °C constant": make_pi_controller("sigma-delta", p, unit, ventilation=vent),
         "PI, set-back, start 6:00": make_pi_controller(
             "sigma-delta", p, unit, ventilation=vent,
             T_set=ComfortSchedule(early_start_h=6.0).setpoint),
         "MPC": EconomicMPC(model, unit, S, comfort, ventilation=vent),
-        "MPC, time-of-use tariff": EconomicMPC(model, unit, S, comfort, ventilation=vent, tariff=tou),
+        "MPC, time-of-use tariff": EconomicMPC(model, unit, S, comfort, ventilation=vent,
+                                               tariff=tou),
         "MPC, model off by 20 %": EconomicMPC(RCModel.mismatched(p, MISMATCH), unit, S, comfort,
                                               ventilation=vent),
         "MPC, forecast +2 K, -30 % sun": EconomicMPC(
             model, unit, SummerScenario(T_mean=28.0, G_max=350.0), comfort, ventilation=vent),
     }
-    results = {}
+    results: dict[str, SimResult] = {}
     for name, ctrl in controllers.items():
         r = simulate(p, S, x0, (WARMUP_DAYS + DAYS) * DAY, controller=ctrl, unit=unit)
         results[name] = r.window(WARMUP_DAYS * DAY)
@@ -67,7 +70,8 @@ def main() -> None:
         lines.append(f"| {name} | {m.energy_kWh:.2f} | {energy_cost(r, tou):.2f} | "
                      f"{m.Kh_outside_occ:.3f} | {m.T_max_occ:.2f} | {m.starts} |")
     table = "\n".join(lines)
-    print(f"Three days after {WARMUP_DAYS} warm-up days; tariff {tou.offpeak:.2f} / {tou.peak:.2f} EUR/kWh\n")
+    print(f"Three days after {WARMUP_DAYS} warm-up days; "
+          f"tariff {tou.offpeak:.2f} / {tou.peak:.2f} EUR/kWh\n")
     print(table)
     (FIG / "mpc_comparison.md").write_text(table + "\n", encoding="utf-8", newline="\n")
 

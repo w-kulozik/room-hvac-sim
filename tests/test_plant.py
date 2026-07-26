@@ -71,9 +71,11 @@ def test_water_exchange_air_buffer_is_conservative():
 def test_dry_buffer_absorbs_and_warm_wall_releases():
     d = ConstantInputs(T_o=26.0, W_o=0.011)(0.0)
     x = equilibrium_state(26.0, 26.0, 0.011)
-    x_dry = x.copy(); x_dry[IDX_PHI_B] -= 0.1
+    x_dry = x.copy()
+    x_dry[IDX_PHI_B] -= 0.1
     assert fluxes(0.0, x_dry, U_OFF, d, P).m_buffer < 0           # buffer takes water
-    x_warm = x.copy(); x_warm[IDX_TM] += 2.0
+    x_warm = x.copy()
+    x_warm[IDX_TM] += 2.0
     assert fluxes(0.0, x_warm, U_OFF, d, P).m_buffer > 0          # warmer wall releases
 
 

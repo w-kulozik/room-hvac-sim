@@ -143,7 +143,8 @@ def test_sigma_delta_cycle_length_follows_the_design_formula():
 
 def test_sigma_delta_respects_minimum_times():
     Ts = 60.0
-    sd = SigmaDeltaLowLoad(S_MIN, CompressorGuard(300.0, 300.0), Ts, T_ref=60.0)  # wants short cycles
+    # T_ref = 60 s wants short cycles
+    sd = SigmaDeltaLowLoad(S_MIN, CompressorGuard(300.0, 300.0), Ts, T_ref=60.0)
     s = np.array([sd.step(k * Ts, 0.15, 25.0, 25.0)[0] for k in range(600)])
     on = s > 0
     edges = np.flatnonzero(np.diff(on.astype(int))) + 1
@@ -189,7 +190,8 @@ def test_pi_tracks_better_and_starts_less_than_on_off(loops):
 
 
 def test_sigma_delta_ripple_matches_its_design(loops):
-    """The low-load cycles of the PI (C) loop have the air-temperature ripple they were designed for."""
+    """The low-load cycles of the PI (C) loop have the air-temperature ripple they were designed
+    for."""
     ripples = low_load_ripples(loops["pi_C"], S_MIN)
     assert len(ripples) > 20
     assert np.median(ripples) == pytest.approx(0.5, rel=0.1)

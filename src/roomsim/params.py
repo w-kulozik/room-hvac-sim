@@ -12,6 +12,60 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class RoomParams:
+    """Primary room parameters; derived quantities are read-only properties.
+
+    Attributes
+    ----------
+    volume : float
+        Room air volume, m3.
+    rho_air : float
+        Air density, kg/m3.
+    cp_air : float
+        Specific heat capacity of air, J/(kg K).
+    furniture_factor : float
+        Multiplier on the air heat capacity to include light furnishings, -.
+    C_m : float
+        Heat capacity of the thermal-mass node, J/K.
+    h_i : float
+        Interior convective heat-transfer coefficient, W/(m2 K).
+    A_int : float
+        Interior surface area exchanging heat with the air, m2.
+    H_ao : float
+        Air-to-outdoor conductance through the window, W/K.
+    H_mo : float
+        Mass-to-outdoor conductance through the opaque envelope, W/K.
+    ach : float
+        Infiltration rate, air changes per hour, 1/h.
+    A_win : float
+        Window area, m2.
+    g_win : float
+        Window solar heat gain coefficient, -.
+    f_sol_air : float
+        Fraction of transmitted solar gain delivered directly to the air, -.
+    q_person_sens : float
+        Sensible heat gain per person, W.
+    f_person_conv : float
+        Convective fraction of the sensible occupant gain, -.
+    g_vap_person_kg_h : float
+        Water vapour released per person, kg/h.
+    co2_person_l_s : float
+        CO2 released per person, L/s.
+    moisture_buffer : bool
+        If False, the buffer layer is disabled (zero capacity and conductance).
+    buffer_area : float
+        Area of the moisture-buffering surfaces, m2.
+    buffer_density : float
+        Dry density of the buffer layer, kg/m3.
+    buffer_depth : float
+        Effective moisture penetration depth, m.
+    buffer_slope : float
+        Slope of the sorption isotherm du/dphi, kg water/kg material.
+    buffer_permeability : float
+        Vapour permeability of the buffer material, kg/(m s Pa).
+    T_ref : float
+        Reference temperature for the Lewis analogy, degC.
+    """
+
     # Geometry and air properties
     volume: float = 5.0 * 4.0 * 2.7          # V, m3
     rho_air: float = 1.2                     # kg/m3

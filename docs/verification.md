@@ -2,7 +2,7 @@
 
 ## Checks
 
-All checks run in `pytest` (164 tests, about three minutes on a laptop). The code and documents
+All checks run in `pytest` (170 tests, about three minutes on a laptop). The code and documents
 were checked again at the end of the project; the defects found and their fixes are in
 [decisions.md](decisions.md) (D20-D22). The unit model was revised after an external review
 (D29-D32); the tests added then are marked "(D29-D32)" below.

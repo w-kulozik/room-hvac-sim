@@ -27,7 +27,8 @@ def test_co2_decay_time_constant_with_ventilation():
 
     class Fixed:
         def step(self, t, y):
-            u = np.zeros(3); u[IDX_V_VENT] = V_vent
+            u = np.zeros(3)
+            u[IDX_V_VENT] = V_vent
             return u
 
     x0 = equilibrium_state(26.0, 26.0, 0.01, C=1500.0)
@@ -42,7 +43,8 @@ def test_ventilation_equals_extra_infiltration():
     d = SummerScenario()(14 * HOUR)
     x = np.array([28.0, 27.0, 0.011, 0.5, 900.0])
     V_vent = 0.02
-    u = np.zeros(3); u[IDX_V_VENT] = V_vent
+    u = np.zeros(3)
+    u[IDX_V_VENT] = V_vent
     p_more_inf = replace(P, ach=P.ach + V_vent * 3600.0 / P.volume)
     assert rhs(0.0, x, u, d, P) == pytest.approx(rhs(0.0, x, U_OFF, d, p_more_inf), rel=1e-12)
 
@@ -56,7 +58,8 @@ def test_co2_closes_to_round_off():
 def test_ventilation_does_not_touch_the_mass_node():
     d = ConstantInputs(T_o=30.0)(0.0)
     x = equilibrium_state(24.0, 24.0, 0.01)
-    u = np.zeros(3); u[IDX_V_VENT] = 0.05
+    u = np.zeros(3)
+    u[IDX_V_VENT] = 0.05
     f = fluxes(0.0, x, u, d, P)
     assert f.q_ventilation == pytest.approx(P.rho_air * 0.05 * P.cp_air * 6.0)
     assert rhs(0.0, x, u, d, P)[1] == pytest.approx(rhs(0.0, x, U_OFF, d, P)[1])

@@ -23,12 +23,14 @@ from roomsim.plotting import (
     plot_humidity,
     plot_temperatures,
 )
+from roomsim.results import SimResult
 from roomsim.simulate import periodic_state, simulate
 
 FIG = Path(__file__).resolve().parents[1] / "figures"
 
 
-def daily_table(r, label: str) -> None:
+def daily_table(r: SimResult, label: str) -> None:
+    """Print per-day maximum and minimum T_a (degC), mean T_m (degC) and maximum RH (%)."""
     print(f"\n{label}")
     print("  day  T_a max (time)      T_a min   T_m mean   RH max")
     for k in range(int(round((r.t[-1] - r.t[0]) / DAY))):
@@ -39,6 +41,7 @@ def daily_table(r, label: str) -> None:
 
 
 def main() -> None:
+    """Run the free-floating baseline and the convergence studies; print and plot them."""
     FIG.mkdir(exist_ok=True)
     apply_style()
     p, S = RoomParams(), SummerScenario()

@@ -43,7 +43,7 @@ All results are from simulation of one synthetic summer day, repeated (see Limit
      in closed loop with the sampled PI, while the coil stays in one regime; second order on
      trajectories that cross from a fully wet into a partially wet coil.
    - Energy, water and CO2 balances closed to round-off.
-   - 164 automated tests.
+   - 170 automated tests.
 
 ## Limits
 
@@ -83,21 +83,38 @@ Python 3.11 or later.
 
 ```bash
 pip install -e ".[dev]"
-pytest
-python scripts/run_baseline.py
-python scripts/compare_controllers.py
-python scripts/compare_humidity.py
-python scripts/compare_mpc.py
-python scripts/compare_ventilation.py
-python scripts/compare_rated.py
+python scripts/reproduce.py --check
 ```
 
-Each script prints its table and writes its figures and its table to `figures/`.
+`reproduce.py` runs every study in turn (about five minutes), writes the figures and result
+tables to `figures/`, checks that the tables quoted in `docs/` match them, and with `--check`
+fails if any regenerated file differs from the committed one. The studies are deterministic,
+so on a clean checkout every file is reproduced byte for byte. Each study can also be run on
+its own, for example `python scripts/compare_mpc.py`.
+
+## Development
+
+```bash
+pytest                  # about 3 minutes
+ruff check .            # lint (pyflakes, pycodestyle, bugbear, docstrings, numpy rules)
+mypy                    # strict type check of src/ and scripts/
+```
+
+- Every public module, class and function has a numpy-style docstring with the units of each
+  physical quantity (SI unless stated; temperatures in degC).
+- Variable names follow the physics notation of [docs/model.md](docs/model.md) (`T_a`,
+  `Q_lat`, `UA_evap`), so the naming rules of PEP 8 are relaxed for them.
+- The code is not run through an automatic formatter: parameter tables keep their aligned
+  columns of units and sources, which a formatter would remove. Line length is checked by the
+  linter instead.
+- `tests/test_docs_consistency.py` compares every number in the result tables of `docs/` with
+  the tables the scripts generate.
 
 ## Layout
 
 ```
 src/roomsim/
+  _typing.py       shared type aliases (FloatArray, FloatOrArray, BoolArray)
   psychro.py       psychrometric functions
   params.py        RoomParams dataclass, derived constants
   inputs.py        disturbance scenarios d(t), vectorised for forecasts
@@ -117,8 +134,8 @@ src/roomsim/
   controllers/     on/off thermostat, discrete PI with anti-windup, low-load handlers,
                    humidity-aware fan control (direct and cascade), economic MPC,
                    ventilation strategies (scheduled, CO2 PI, staged, night flush)
-scripts/           one script per study (see Install and run)
-tests/             164 tests; tolerance rules in tests/README.md and tests/criteria.py
+scripts/           one script per study, and reproduce.py to run them all
+tests/             170 tests; tolerance rules in tests/README.md and tests/criteria.py
 docs/              model, results, verification, decisions, FAQ, specification, references
 figures/           figures and result tables written by the scripts
 ```

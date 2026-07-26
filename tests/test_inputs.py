@@ -64,7 +64,7 @@ def test_scalar_and_vector_calls_agree():
     vec = S(t)
     for i, ti in enumerate(t):
         sca = S(ti)
-        for a, b in zip(sca, vec):
+        for a, b in zip(sca, vec, strict=True):
             assert float(a) == pytest.approx(b[i])
 
 

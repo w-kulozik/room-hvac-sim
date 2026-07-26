@@ -40,7 +40,8 @@ def test_saturation_enthalpy_inversion():
 def test_saturation_enthalpy_matches_psychro():
     T = 12.0
     h, dh = _h_sat_and_slope(T)
-    assert h / 1e3 == pytest.approx(float(psychro.enthalpy(T, psychro.W_from_RH(T, 1.0))), rel=1e-12)
+    assert h / 1e3 == pytest.approx(float(psychro.enthalpy(T, psychro.W_from_RH(T, 1.0))),
+                                    rel=1e-12)
     h2, _ = _h_sat_and_slope(T + 1e-5)
     h1, _ = _h_sat_and_slope(T - 1e-5)
     assert dh == pytest.approx((h2 - h1) / 2e-5, rel=1e-7)
@@ -51,7 +52,8 @@ def test_saturation_enthalpy_matches_psychro():
 def test_rated_point():
     st = U.operate(1.0, 1.0, R.T_in_rated, R.W_in_rated, R.T_o_rated)
     assert st.wet_fraction == 1.0
-    # calibration: net EER, the indoor fan heat (which stays in the room) subtracted from the capacity
+    # calibration: net EER, the indoor fan heat (which stays in the room) subtracted from the
+    # capacity
     assert net_cooling(st, R.T_in_rated) / st.P_el == pytest.approx(R.EER_rated, rel=1e-12)
     assert 0.68 < shr(st) < 0.80                                           # typical split unit
     assert 8.0 < st.T_s < 14.0

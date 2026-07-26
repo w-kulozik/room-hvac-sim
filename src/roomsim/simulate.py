@@ -20,10 +20,12 @@ exactly what the integrator did.
 
 from __future__ import annotations
 
-from typing import Protocol
+from collections.abc import Callable
+from typing import Protocol, cast
 
 import numpy as np
 
+from ._typing import FloatArray
 from .ac_unit import OFF_STATE, ACUnit, CoilState
 from .inputs import PIECEWISE_CONSTANT, Disturbances, Scenario
 from .integrators import STEPPERS
@@ -53,11 +55,24 @@ AUX = ("E_in", "M_in", "CO2_in", "W_ext", "E_el", "M_drain")
 
 
 class Controller(Protocol):
-    def step(self, t: float, y: np.ndarray) -> np.ndarray:
-        """Output from the measurement y = [T_a, RH_a, C], plus the coil temperature with a unit.
+    """Discrete-time controller called by the simulator at each sampling instant."""
 
-        Without a unit: u = [Q_hvac_sens, m_hvac_lat, V_vent].
-        With a unit:    command = [s, f, V_vent].
+    def step(self, t: float, y: FloatArray) -> FloatArray:
+        """Compute the controller output from the measurement.
+
+        Parameters
+        ----------
+        t : float
+            Sampling time, s.
+        y : ndarray
+            Measurement [T_a degC, RH_a fraction, C ppm], plus the coil-sensor temperature
+            (degC) when a unit is present.
+
+        Returns
+        -------
+        ndarray, shape (3,)
+            Without a unit: u = [Q_hvac_sens W, m_hvac_lat kg/s, V_vent m3/s].
+            With a unit:    command = [s -, f -, V_vent m3/s].
         """
         ...
 
@@ -70,15 +85,54 @@ def _ratio(a: float, b: float, what: str) -> int:
 
 
 def coil_sensor(st: CoilState, T_a: float) -> float:
-    """Evaporator thermistor: coil surface while the unit runs, room air when it is idle."""
+    """Return the evaporator thermistor reading.
+
+    Parameters
+    ----------
+    st : CoilState
+        Unit operating point.
+    T_a : float
+        Indoor air temperature, degC.
+
+    Returns
+    -------
+    float
+        Coil surface temperature while the unit runs (coil load or indoor fan) and T_s is not
+        NaN, otherwise the room air temperature, degC.
+    """
     running = st.Q_coil > 0.0 or st.P_fan_in > 0.0
     return st.T_s if running and not np.isnan(st.T_s) else T_a
 
 
-def unit_input(unit: ACUnit, cmd: np.ndarray, ramp: float, x: np.ndarray,
-               d: Disturbances, M_c: float | None = None) -> tuple[np.ndarray, CoilState]:
-    """Plant input u produced by the unit for command cmd at air state x."""
-    st = unit.operate(cmd[IDX_CMD_S], cmd[IDX_CMD_FAN], x[IDX_TA], x[IDX_W], d.T_o, ramp, M_c)
+def unit_input(unit: ACUnit, cmd: FloatArray, ramp: float, x: FloatArray,
+               d: Disturbances, M_c: float | None = None) -> tuple[FloatArray, CoilState]:
+    """Compute the plant input u produced by the unit for command cmd at air state x.
+
+    Parameters
+    ----------
+    unit : ACUnit
+        Air-conditioning unit.
+    cmd : ndarray, shape (3,)
+        Command [s -, f -, V_vent m3/s].
+    ramp : float
+        Capacity fraction after a compressor start, -.
+    x : ndarray
+        State whose first entries are the room state [T_a degC, T_m degC, W kg/kg, ...].
+    d : Disturbances
+        Disturbances sampled at a single time.
+    M_c : float, optional
+        Water held on the coil, kg; passed to ``ACUnit.operate``.
+
+    Returns
+    -------
+    u : ndarray, shape (3,)
+        Plant input [Q_hvac_sens W, m_hvac_lat kg/s, V_vent m3/s]; Q_hvac_sens includes the
+        indoor-fan heat.
+    st : CoilState
+        Unit operating point.
+    """
+    T_o = cast(float, d.T_o)    # d is sampled at a single time, so T_o is a scalar
+    st = unit.operate(cmd[IDX_CMD_S], cmd[IDX_CMD_FAN], x[IDX_TA], x[IDX_W], T_o, ramp, M_c)
     u = np.empty(N_INPUTS)
     u[IDX_Q_SENS] = -st.Q_sens + st.P_fan_in      # indoor fan heat stays in the room
     u[IDX_M_LAT] = st.m_lat
@@ -97,9 +151,11 @@ class _Actuation:
 
     @property
     def n_states(self) -> int:
+        """Number of actuator states appended to the room state, -."""
         return 1 if self.unit is not None else 0       # water held on the coil
 
-    def set_output(self, t: float, out: np.ndarray) -> None:
+    def set_output(self, t: float, out: FloatArray) -> None:
+        """Hold a new controller output from time t (s) and record compressor starts."""
         self.out = np.asarray(out, dtype=float)
         if self.unit is not None:
             on = self.out[IDX_CMD_S] > 0
@@ -107,8 +163,8 @@ class _Actuation:
                 self.t_started = t
             self.running = on
 
-    def inputs(self, t: float, x: np.ndarray, d: Disturbances) -> tuple[np.ndarray, CoilState]:
-        """Plant input and unit operating point at time t and full integrated state x."""
+    def inputs(self, t: float, x: FloatArray, d: Disturbances) -> tuple[FloatArray, CoilState]:
+        """Return the plant input and unit operating point at time t (s) and integrated state x."""
         if self.unit is None:
             return self.out, OFF_STATE
         ramp = self.unit.start_ramp(t - self.t_started) if self.out[IDX_CMD_S] > 0 else 1.0
@@ -118,7 +174,7 @@ class _Actuation:
 def simulate(
     p: RoomParams,
     scenario: Scenario,
-    x0: np.ndarray,
+    x0: FloatArray,
     duration: float,
     dt: float = 60.0,
     t_start: float = 0.0,
@@ -129,7 +185,47 @@ def simulate(
     unit_running_at_start: bool = False,
     M_coil0: float = 0.0,
 ) -> SimResult:
-    """Simulate ``duration`` seconds from time ``t_start`` (seconds from midnight of day 0)."""
+    """Simulate ``duration`` seconds from time ``t_start`` (seconds from midnight of day 0).
+
+    Parameters
+    ----------
+    p : RoomParams
+        Room parameters.
+    scenario : Scenario
+        Disturbances as a function of time.
+    x0 : ndarray, shape (5,)
+        Initial room state [T_a degC, T_m degC, W kg/kg, phi_b -, C ppm].
+    duration : float
+        Simulated time, s; a positive integer multiple of dt.
+    dt : float, optional
+        Integration step, s.
+    t_start : float, optional
+        Start time from midnight of day 0, s.
+    method : str, optional
+        Integrator, a key of ``STEPPERS`` ("euler" or "rk4").
+    controller : Controller, optional
+        Discrete controller; without one the plant input is held at zero.
+    dt_ctrl : float, optional
+        Controller sampling interval, s; a positive integer multiple of dt.
+    unit : ACUnit, optional
+        Air-conditioning unit; if given, the controller output is a unit command.
+    unit_running_at_start : bool, optional
+        Treat the compressor as already running (no start ramp) at t_start.
+    M_coil0 : float, optional
+        Initial water held on the coil, kg (used only with a unit).
+
+    Returns
+    -------
+    SimResult
+        Logged time series on the step grid and the cumulative balance integrals.
+
+    Raises
+    ------
+    ValueError
+        If duration or dt_ctrl is not a positive integer multiple of dt.
+    KeyError
+        If method is not a key of ``STEPPERS``.
+    """
     step = STEPPERS[method]
     n_steps = _ratio(duration, dt, "duration")
     n_ctrl = _ratio(dt_ctrl, dt, "dt_ctrl") if controller is not None else 1
@@ -137,7 +233,7 @@ def simulate(
     i_aux = N_STATES + act.n_states
     x = np.concatenate([np.asarray(x0, dtype=float), [M_coil0] * act.n_states, np.zeros(len(AUX))])
 
-    t_log = t_start + dt * np.arange(n_steps + 1)
+    t_log = cast(FloatArray, t_start + dt * np.arange(n_steps + 1))   # float64 by promotion
     x_log = np.empty((n_steps + 1, len(x)))
     u_log = np.empty((n_steps + 1, N_INPUTS))
     d_log = np.empty((n_steps + 1, len(Disturbances._fields)))
@@ -145,7 +241,7 @@ def simulate(
     c_log = np.zeros((n_steps + 1, N_CMD))
     op_log = np.zeros((n_steps + 1, len(UNIT_FIELDS)))
 
-    def log(k: int, t: float, x: np.ndarray, d: Disturbances) -> None:
+    def log(k: int, t: float, x: FloatArray, d: Disturbances) -> None:
         u, st = act.inputs(t, x, d)
         x_log[k], u_log[k] = x, u
         d_log[k] = [float(v) for v in d]
@@ -164,8 +260,9 @@ def simulate(
             act.set_output(t, controller.step(t, y))
         held = {name: getattr(d_k, name) for name in PIECEWISE_CONSTANT}
 
-        def f(tt: float, xx: np.ndarray) -> np.ndarray:
-            d = scenario(tt)._replace(**held)
+        def f(tt: float, xx: FloatArray) -> FloatArray:
+            # f is called only by the step below, within this iteration
+            d = scenario(tt)._replace(**held)  # noqa: B023
             u, st = act.inputs(tt, xx, d)
             fl = fluxes(tt, xx[:N_STATES], u, d, p)
             aux = [fl.boundary_total, fl.water_boundary_total, fl.co2_total, fl.water_external,
@@ -193,16 +290,16 @@ def simulate(
 def periodic_state(
     p: RoomParams,
     scenario: Scenario,
-    x_guess: np.ndarray,
+    x_guess: FloatArray,
     period: float = 86_400.0,
     dt: float = 60.0,
     method: str = "rk4",
-    controller_factory=None,
+    controller_factory: Callable[[], Controller] | None = None,
     dt_ctrl: float = 60.0,
     unit: ACUnit | None = None,
     max_iter: int = 10,
-) -> np.ndarray:
-    """Initial room state of the periodic steady state, found by Newton shooting.
+) -> FloatArray:
+    """Find the initial room state of the periodic steady state by Newton shooting.
 
     Solves F(x) = Phi_T(x) - x = 0, where Phi_T maps the room state at t = 0 to the state one
     period later. The mass time constant (~3 days) makes plain warm-up slow: after a week
@@ -211,16 +308,51 @@ def periodic_state(
     ``controller_factory`` returns a fresh controller per run. Controller states and the water
     on the coil restart at each evaluation, so with a controller the result is periodic only in
     the room state; closed-loop runs use warm-up days instead.
+
+    Parameters
+    ----------
+    p : RoomParams
+        Room parameters.
+    scenario : Scenario
+        Disturbances; periodic with ``period`` for a meaningful result.
+    x_guess : ndarray, shape (5,)
+        Initial guess of the room state [T_a degC, T_m degC, W kg/kg, phi_b -, C ppm].
+    period : float, optional
+        Period, s.
+    dt : float, optional
+        Integration step, s.
+    method : str, optional
+        Integrator, "euler" or "rk4".
+    controller_factory : callable, optional
+        Returns a new controller for each simulated period.
+    dt_ctrl : float, optional
+        Controller sampling interval, s.
+    unit : ACUnit, optional
+        Air-conditioning unit.
+    max_iter : int, optional
+        Maximum number of Newton iterations.
+
+    Returns
+    -------
+    ndarray, shape (5,)
+        Room state at t = 0 whose image after one period differs from it by at most
+        ``1e-3 * STATE_SCALE`` in every component.
+
+    Raises
+    ------
+    RuntimeError
+        If the shooting does not converge within ``max_iter`` iterations.
     """
     scale = STATE_SCALE                           # finite-difference steps
     tol = 1e-3 * scale                            # periodicity error accepted after one period
     x = np.asarray(x_guess, dtype=float).copy()
 
-    def phi(x0: np.ndarray) -> np.ndarray:
+    def phi(x0: FloatArray) -> FloatArray:
         ctrl = controller_factory() if controller_factory else None
         r = simulate(p, scenario, x0, period, dt=dt, method=method, controller=ctrl,
                      dt_ctrl=dt_ctrl, unit=unit)
-        return r.x[-1]
+        x_end: FloatArray = r.x[-1]
+        return x_end
 
     for _ in range(max_iter):
         F = phi(x) - x

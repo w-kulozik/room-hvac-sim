@@ -24,17 +24,57 @@ from ..params import RoomParams
 
 @dataclass
 class DiscretePI:
+    """Positional discrete PI with back-calculation anti-windup.
+
+    Attributes
+    ----------
+    Kp : float
+        Proportional gain, output units per unit of error (e.g. demand per K).
+    Ti : float
+        Integral time, s.
+    Ts : float
+        Sampling period, s.
+    Tt : float or None
+        Tracking time for anti-windup, s; None uses Ti/2, inf disables anti-windup.
+    I : float
+        Integrator state, output units.
+    """
+
     Kp: float                 # demand per K
     Ti: float                 # integral time, s
     Ts: float = 60.0          # sampling period, s
     Tt: float | None = None   # tracking time for anti-windup, s (None: Ti/2; inf: no anti-windup)
-    I: float = 0.0            # integrator state
+    I: float = 0.0            # integrator state  # noqa: E741  (public attribute, PI notation)
 
     def demand(self, e: float) -> float:
-        """Unsaturated demand v for error e (no state change)."""
+        """Return the unsaturated demand v = Kp e + I for error e (no state change).
+
+        Parameters
+        ----------
+        e : float
+            Error y - r, in the units of the measurement.
+
+        Returns
+        -------
+        float
+            Unsaturated demand, output units.
+        """
         return self.Kp * e + self.I
 
     def update(self, e: float, v: float, u_applied: float, integrate: bool = True) -> None:
+        """Advance the integrator by one sample, with back-calculation.
+
+        Parameters
+        ----------
+        e : float
+            Error used for the demand, in the units of the measurement.
+        v : float
+            Unsaturated demand returned by ``demand``, output units.
+        u_applied : float
+            Output actually delivered, output units.
+        integrate : bool, optional
+            False freezes the integrator (conditional integration).
+        """
         if not integrate:
             return
         Tt = 0.5 * self.Ti if self.Tt is None else self.Tt
@@ -42,7 +82,26 @@ class DiscretePI:
 
 
 def simc_pi(K: float, tau: float, theta: float, tau_c: float) -> tuple[float, float]:
-    """SIMC rules (Skogestad 2003) for a first-order process K e^(-theta s)/(tau s + 1)."""
+    """Return SIMC PI settings (Skogestad 2003) for a process K e^(-theta s)/(tau s + 1).
+
+    Parameters
+    ----------
+    K : float
+        Process gain, output per unit of controller output.
+    tau : float
+        Time constant, s.
+    theta : float
+        Dead time, s.
+    tau_c : float
+        Desired closed-loop time constant, s.
+
+    Returns
+    -------
+    Kp : float
+        Proportional gain, in the inverse of the units of K.
+    Ti : float
+        Integral time, s.
+    """
     Kp = tau / (K * (tau_c + theta))
     Ti = min(tau, 4.0 * (tau_c + theta))
     return Kp, Ti
@@ -50,15 +109,36 @@ def simc_pi(K: float, tau: float, theta: float, tau_c: float) -> tuple[float, fl
 
 def room_pi_tuning(p: RoomParams, unit: ACUnit, Ts: float = 60.0, tau_c: float = 900.0,
                    T_o: float = 32.0) -> tuple[float, float]:
-    """PI gains for air temperature control through the compressor demand.
+    """Return PI gains for air-temperature control through the compressor demand.
 
     Process seen by the controller: demand in [0, 1] -> cooling capacity -> T_a. With the mass
-    node held fixed this is first order with tau = tau_air and gain capacity / (H_am + H_ao + H_inf).
+    node held fixed this is first order with tau = tau_air and gain
+    capacity / (H_am + H_ao + H_inf).
     The mass node adds a slow mode that the integral action handles. Dead time: half a sample
     for the zero-order hold; the sensor is read at the sampling instant without further delay,
     so theta = Ts/2.
     tau_c = 900 s trades speed for robustness to the unmodelled mass dynamics and the coil
     nonlinearity.
+
+    Parameters
+    ----------
+    p : RoomParams
+        Room parameters (conductances in W/K, ``tau_air`` in s).
+    unit : ACUnit
+        Air-conditioning unit; its full-speed capacity at T_o sets the process gain.
+    Ts : float, optional
+        Sampling period, s.
+    tau_c : float, optional
+        Desired closed-loop time constant, s.
+    T_o : float, optional
+        Outdoor temperature at which the capacity is evaluated, degC.
+
+    Returns
+    -------
+    Kp : float
+        Proportional gain, demand per K.
+    Ti : float
+        Integral time, s.
     """
     K = unit.capacity(1.0, T_o) / (p.H_am + p.H_ao + p.H_inf)
     return simc_pi(K, p.tau_air, Ts / 2.0, tau_c)
