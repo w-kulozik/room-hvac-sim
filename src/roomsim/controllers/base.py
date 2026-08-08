@@ -1,11 +1,14 @@
 """Building blocks shared by the discrete controllers.
 
 All controllers run every Ts seconds (the simulator's ``dt_ctrl``), read y = [T_a, RH_a, C]
-and return the command [s, f, V_vent] for the air-conditioning unit.
+and return the command [s, f, V_vent] for the air-conditioning unit. A controller whose
+discrete elements assume a sampling period exposes it as the attribute ``Ts`` (s); the
+simulator checks it against ``dt_ctrl``. Controllers that only use the time t have no ``Ts``.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -13,6 +16,7 @@ import numpy as np
 
 from .._typing import FloatArray
 from ..inputs import hour_of_day
+from ..tariff import check_daily_window, in_daily_window
 
 
 class Controller(Protocol):
@@ -23,12 +27,59 @@ class Controller(Protocol):
         ...
 
 
+def sampling_period(obj: object) -> float | None:
+    """Return the sampling period ``obj.Ts`` (s), or None if obj does not assume one.
+
+    Parameters
+    ----------
+    obj : object
+        Controller, controller part or ventilation strategy.
+
+    Returns
+    -------
+    float or None
+        Sampling period, s.
+    """
+    Ts = getattr(obj, "Ts", None)
+    return None if Ts is None else float(Ts)
+
+
+def common_sampling_period(owner: str, **periods: float | None) -> float | None:
+    """Return the sampling period shared by the parts of a controller.
+
+    Parameters
+    ----------
+    owner : str
+        Name of the controller, used in the error message.
+    **periods : float or None
+        Sampling period of each part, s, by name; None for parts that do not assume one.
+
+    Returns
+    -------
+    float or None
+        The common sampling period, s; None if no part assumes one.
+
+    Raises
+    ------
+    ValueError
+        If two parts assume different sampling periods.
+    """
+    given = {name: Ts for name, Ts in periods.items() if Ts is not None}
+    values = list(given.values())
+    if any(not math.isclose(Ts, values[0], rel_tol=1e-9) for Ts in values[1:]):
+        listing = ", ".join(f"{name} = {Ts!r} s" for name, Ts in given.items())
+        raise ValueError(f"{owner}: the parts assume different sampling periods Ts ({listing}); "
+                         "they must all be equal")
+    return values[0] if values else None
+
+
 @dataclass(frozen=True)
 class VentilationSchedule:
     """Constant outdoor-air supply during occupied hours.
 
     Default: 0.0105 m3/s (38 m3/h). With 0.5 ach of infiltration this keeps the occupied
-    steady-state CO2 at about 1000 ppm for two people.
+    steady-state CO2 at about 1000 ppm for two people. A period with start_h > end_h crosses
+    midnight.
 
     Attributes
     ----------
@@ -38,6 +89,12 @@ class VentilationSchedule:
         Outdoor-air flow outside those hours, m3/s.
     start_h, end_h : float
         Start and end of the occupied period, clock hours (h).
+
+    Raises
+    ------
+    ValueError
+        If a limit is outside [0, 24] or the two limits are equal (see
+        ``roomsim.tariff.check_daily_window``).
     """
 
     V_occupied: float = 0.0105
@@ -45,10 +102,15 @@ class VentilationSchedule:
     start_h: float = 8.0
     end_h: float = 18.0
 
+    def __post_init__(self) -> None:
+        """Validate the occupied period."""
+        check_daily_window("start_h", self.start_h, "end_h", self.end_h)
+
     def __call__(self, t: float) -> float:
         """Return the scheduled outdoor-air flow at time t (s), m3/s."""
         h = float(hour_of_day(t))
-        return self.V_occupied if self.start_h <= h < self.end_h else self.V_unoccupied
+        on = bool(in_daily_window(h, self.start_h, self.end_h))
+        return self.V_occupied if on else self.V_unoccupied
 
 
 NO_VENTILATION = VentilationSchedule(V_occupied=0.0)

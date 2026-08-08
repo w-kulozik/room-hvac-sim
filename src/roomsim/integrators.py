@@ -42,3 +42,44 @@ def euler_stability_limit(J: np.ndarray) -> float:
     if np.any(lam.real >= 0):
         raise ValueError("system has non-decaying modes; no stability limit for decay")
     return float(np.min(-2.0 * lam.real / np.abs(lam) ** 2))
+
+
+def _rk4_amplification(z: np.ndarray) -> np.ndarray:
+    """Return the RK4 amplification factor R(z) = 1 + z + z^2/2 + z^3/6 + z^4/24."""
+    return 1.0 + z * (1.0 + z * (0.5 + z * (1.0 / 6.0 + z / 24.0)))
+
+
+def rk4_stability_limit(J: np.ndarray) -> float:
+    """Largest stable classical RK4 step for the linear(ised) system dx/dt = J x, s.
+
+    RK4 is stable when |R(dt*lambda)| <= 1 for every eigenvalue lambda of J, with
+    R(z) = 1 + z + z^2/2 + z^3/6 + z^4/24. For a real negative eigenvalue this is
+    dt <= 2.785/|lambda|. The limit is found by scanning dt along each eigenvalue's ray on a
+    grid of 1e-4 * 4/|lambda|, so it is accurate to about 1e-4 relative.
+
+    Parameters
+    ----------
+    J : ndarray, shape (n, n)
+        Jacobian of the right-hand side, 1/s.
+
+    Returns
+    -------
+    float
+        Stability limit, s.
+
+    Raises
+    ------
+    ValueError
+        If J has an eigenvalue with non-negative real part other than zero.
+    """
+    lam = np.linalg.eigvals(J)
+    lam = lam[np.abs(lam) > 0]
+    if np.any(lam.real >= 0):
+        raise ValueError("system has non-decaying modes; no stability limit for decay")
+    s = np.linspace(1e-4, 4.0, 40_000)            # dt*|lambda|; |R| > 1 beyond 4 on every ray
+    limits = []
+    for mu in lam:
+        unstable = np.abs(_rk4_amplification(s * mu / abs(mu))) > 1.0
+        k = int(np.argmax(unstable)) if np.any(unstable) else len(s)
+        limits.append(s[k - 1] / abs(mu) if k > 0 else 0.0)
+    return float(min(limits))

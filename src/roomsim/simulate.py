@@ -28,10 +28,12 @@ import numpy as np
 from ._typing import FloatArray
 from .ac_unit import OFF_STATE, ACUnit, CoilState
 from .inputs import PIECEWISE_CONSTANT, Disturbances, Scenario
-from .integrators import STEPPERS
+from .integrators import STEPPERS, euler_stability_limit, rk4_stability_limit
 from .params import RoomParams
 from .plant import (
+    IDX_CO2,
     IDX_M_LAT,
+    IDX_PHI_B,
     IDX_Q_SENS,
     IDX_TA,
     IDX_V_VENT,
@@ -42,6 +44,7 @@ from .plant import (
     Fluxes,
     derivatives,
     fluxes,
+    jacobian,
     measure,
 )
 from .results import UNIT_FIELDS, SimResult, UnitLog
@@ -52,6 +55,9 @@ N_CMD = 3
 
 # Cumulative integrals appended to the state
 AUX = ("E_in", "M_in", "CO2_in", "W_ext", "E_el", "M_drain")
+
+STATE_NAMES = ("T_a", "T_m", "W", "phi_b", "C")
+STABILITY_LIMITS = {"euler": euler_stability_limit, "rk4": rk4_stability_limit}
 
 
 class Controller(Protocol):
@@ -155,8 +161,17 @@ class _Actuation:
         return 1 if self.unit is not None else 0       # water held on the coil
 
     def set_output(self, t: float, out: FloatArray) -> None:
-        """Hold a new controller output from time t (s) and record compressor starts."""
+        """Hold a new controller output from time t (s) and record compressor starts.
+
+        Raises ValueError if the ventilation flow V_vent (m3/s) is negative or NaN: a balanced
+        supply fan cannot deliver a negative flow, and a negative one would reverse the
+        ventilation heat, moisture and CO2 terms.
+        """
         self.out = np.asarray(out, dtype=float)
+        V_vent = self.out[IDX_CMD_VENT if self.unit is not None else IDX_V_VENT]
+        if not V_vent >= 0.0:
+            raise ValueError(f"controller output V_vent = {V_vent!r} m3/s at t = {t!r} s is "
+                             "invalid; it must be >= 0")
         if self.unit is not None:
             on = self.out[IDX_CMD_S] > 0
             if on and not self.running:
@@ -222,13 +237,23 @@ def simulate(
     Raises
     ------
     ValueError
-        If duration or dt_ctrl is not a positive integer multiple of dt.
+        If duration or dt_ctrl is not a positive integer multiple of dt, or if the controller
+        returns a negative ventilation flow.
+    RuntimeError
+        If the state becomes non-finite or W, C or (with an active buffer) phi_b becomes
+        negative, which in practice means dt exceeds the stability limit of the integrator.
     KeyError
         If method is not a key of ``STEPPERS``.
     """
     step = STEPPERS[method]
     n_steps = _ratio(duration, dt, "duration")
     n_ctrl = _ratio(dt_ctrl, dt, "dt_ctrl") if controller is not None else 1
+    # a controller whose discrete elements assume a sampling period (attribute Ts) must be
+    # called at that period: at another one its integrators and predictions are scaled wrongly
+    Ts_ctrl = getattr(controller, "Ts", None)
+    if Ts_ctrl is not None and abs(Ts_ctrl - dt_ctrl) > 1e-9 * dt_ctrl:
+        raise ValueError(f"dt_ctrl = {dt_ctrl!r} s does not match the controller's sampling "
+                         f"period Ts = {Ts_ctrl!r} s; build the controller with Ts = dt_ctrl")
     act = _Actuation(unit, t_start, unit_running_at_start)
     i_aux = N_STATES + act.n_states
     x = np.concatenate([np.asarray(x0, dtype=float), [M_coil0] * act.n_states, np.zeros(len(AUX))])
@@ -249,6 +274,8 @@ def simulate(
         if unit is not None:
             c_log[k] = act.out
             op_log[k] = [getattr(st, name) for name in UNIT_FIELDS]
+
+    buffer_active = p.buffer_capacity > 0.0     # otherwise phi_b is inert and may take any value
 
     for k in range(n_steps):
         t = t_log[k]
@@ -271,6 +298,10 @@ def simulate(
 
         log(k, t, x, d_k)
         x = step(f, t, x, dt)
+        if not (np.all(np.isfinite(x)) and x[IDX_W] >= 0.0 and x[IDX_CO2] >= 0.0
+                and (x[IDX_PHI_B] >= 0.0 or not buffer_active)):
+            raise RuntimeError(_divergence_message(p, scenario, method, dt, t_start,
+                                                   t_log[k + 1], x, x_log[0], u_log[0]))
 
     log(n_steps, t_log[-1], x, scenario(t_log[-1]))
 
@@ -285,6 +316,26 @@ def simulate(
         E_in=aux["E_in"], M_in=aux["M_in"], CO2_in=aux["CO2_in"], W_ext=aux["W_ext"],
         p=p, method=method, dt=dt, unit=unit_log,
     )
+
+
+def _divergence_message(p: RoomParams, scenario: Scenario, method: str, dt: float,
+                        t_start: float, t: float, x: FloatArray, x0: FloatArray,
+                        u0: FloatArray) -> str:
+    """Describe a state that became non-finite or unphysical, with the likely cause.
+
+    The stability limit is estimated from the plant Jacobian at the initial state and input
+    (without the feedback of a controller or unit), so it is indicative only.
+    """
+    state = ", ".join(f"{n} = {v:.4g}" for n, v in zip(STATE_NAMES, x[:N_STATES], strict=True))
+    msg = (f"simulation diverged at t = {t:.0f} s: the state became non-finite or unphysical "
+           f"(negative W, C or active-buffer phi_b): {state}. The likely cause is a step "
+           f"dt = {dt:g} s above the stability limit of the explicit '{method}' integrator")
+    try:
+        J = jacobian(t_start, x0[:N_STATES], u0, scenario(t_start), p)
+        limit = STABILITY_LIMITS[method](J)
+    except (KeyError, ValueError, np.linalg.LinAlgError):
+        return msg + "; reduce dt."
+    return msg + f" (about {limit:.0f} s at the initial state); reduce dt."
 
 
 def periodic_state(
@@ -341,7 +392,15 @@ def periodic_state(
     Raises
     ------
     RuntimeError
-        If the shooting does not converge within ``max_iter`` iterations.
+        If the shooting does not converge within ``max_iter`` iterations, or if a state with
+        no dynamics changes over one period, so that no periodic state exists.
+
+    Notes
+    -----
+    A state whose value after one period does not depend on any state (phi_b with the
+    buffer off, T_m with h_i = H_mo = 0) has no dynamics: its row of Jf - I is zero and
+    the Newton matrix is singular. Such states keep their guess and Newton solves for the
+    others; if one of them changes over the period, no periodic state exists.
     """
     scale = STATE_SCALE                           # finite-difference steps
     tol = 1e-3 * scale                            # periodicity error accepted after one period
@@ -363,5 +422,19 @@ def periodic_state(
             e = np.zeros(N_STATES)
             e[j] = scale[j]
             Jf[:, j] = (phi(x + e) - phi(x - e)) / (2 * scale[j])
-        x = x - np.linalg.solve(Jf - np.eye(N_STATES), F)
+        A = Jf - np.eye(N_STATES)
+        # rows of A in units of STATE_SCALE; a zero row means the state has no dynamics
+        frozen = np.all(np.abs(A) * scale[None, :] <= 1e-9 * scale[:, None], axis=1)
+        drifting = frozen & (np.abs(F) > tol)
+        if np.any(drifting):
+            names = ", ".join(f"{STATE_NAMES[j]} (change {F[j]:.4g} per period)"
+                              for j in np.flatnonzero(drifting))
+            raise RuntimeError(f"no periodic state exists: {names} has no dynamics (its value "
+                               "after one period does not depend on the state) but changes "
+                               "over the period")
+        if not np.any(frozen):
+            x = x - np.linalg.solve(A, F)
+        else:
+            active = ~frozen
+            x[active] -= np.linalg.solve(A[np.ix_(active, active)], F[active])
     raise RuntimeError("periodic shooting did not converge")

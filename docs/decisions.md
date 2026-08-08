@@ -78,7 +78,7 @@ Publications named in this log are listed with full references in
 - **Later change:** since the capacity falls with the evaporating temperature (D30), the same
   case gives 3.9 °C and the limit is no longer reached at rating conditions. It is reached with
   cool, dry return air (for example 22 °C and 0.008 kg/kg, full speed, 40 % fan); a test checks
-  that case.
+  that case. The cycle efficiency in that regime was corrected in D40.
 
 ### D8. Unit evaluated at every Runge-Kutta stage
 - **Timing:** a priori, then confirmed by a test.
@@ -210,7 +210,8 @@ Publications named in this log are listed with full references in
   | 0.6 K | 5.80 | 0.009 |
 
   Repeated again after the unit model changes D29-D32, with k_o as refitted in D30 (margin kept
-  at 0.6 K):
+  at 0.6 K). This sweep was run before the MPC corrections D35 and D36, after which the nominal
+  MPC uses 6.27 kWh at 0.6 K, still with 0.000 K·h outside the band; it was not repeated:
 
   | Margin | Energy (kWh) | K·h outside the band |
   |---|---|---|
@@ -273,7 +274,8 @@ to the answer. Changes made after seeing results are added as separate entries.
   two people, the gain is ∂C/∂V = −(C − C_o)/(V_inf + V) and the time constant is
   V_room/(V_inf + V).
 - **Tuning:** SIMC with τ_c = 900 s, as for the temperature loop, computed from the parameters
-  (`dcv_tuning`).
+  (`dcv_tuning`). (For the temperature loop the achieved closed-loop time differs from the
+  design because the unit is nonlinear; see D39. The CO2 loop has no such nonlinearity.)
 - **Arithmetic correction:** the first version of this entry used V_inf + V ≈ 0.0175 m³/s.
   The steady state at 900 ppm requires N G / (C − C_o) = 0.0217 m³/s, so τ ≈ 2 500 s and
   ∂C/∂V ≈ −22 000 ppm per m³/s. The correction was committed together with the first
@@ -373,7 +375,8 @@ check found two defects (D20, D21) and four inaccuracies (D22). The fixes follow
 - The sigma-delta mean-demand test tolerance went from 0.01 to 0.003. Measured errors are
   ≤ 0.0017; at v = 0.05 the old tolerance allowed 20 %.
 - The evaporator thermistor in fan-only mode now reads the wet-bulb temperature only if the coil
-  is wet, and the return-air temperature if it is dry.
+  is wet, and the return-air temperature if it is dry. (Refined in D42: the reading now moves
+  continuously between the two as the film evaporates.)
 
 ## Changes after the external review
 
@@ -445,7 +448,7 @@ a reference used in the MPC comparison. D34 lists the effect on the results.
   end of this round of changes found the mismatch after the studies had been rerun. k_o was
   refitted as above, because its fit was inconsistent with that of k_e, not because of a result,
   and every study was rerun. The three-day energies changed by −0.4 to +2.1 %. Effect on the
-  results of D34 (values with k_o = 0.011 in brackets): PI saving against on/off 30 % (29 %), PI
+  results of D34, before the corrections D35-D37 (values with k_o = 0.011 in brackets): PI saving against on/off 30 % (29 %), PI
   occupied RH 62.4 % (62.6 %), humidity control +9 % against the PI (unchanged) and −23 to −24 %
   against on/off (−23 %), MPC against the set-back PI −1.6 % (−1.7 %), time-of-use MPC cost −6.6 %
   (unchanged) for 16 % more energy (18 %). The MPC with model parameters off by 20 % now uses
@@ -511,18 +514,23 @@ a reference used in the MPC comparison. D34 lists the effect on the results.
   | 6:00 | 6.41 | 2.13 | 0.000 |
   | 7:00 | 6.29 | 2.12 | 0.000 |
   | 7:30 | 6.23 | 2.12 | 0.000 |
-  | MPC (for comparison) | 6.31 | 2.19 | 0.000 |
+  | MPC (for comparison) | 6.27 | 2.15 | 0.000 |
 
-- **Consequence:** the MPC's energy saving against the set-back PI (1.6 % with the 6:00 start) is
-  smaller than the effect of the PI's start time. A start at 7:00 matches the MPC (6.29 against
-  6.31 kWh), and 7:30 uses 1 % less. The comparison shows that the MPC finds a good start by
-  itself, not that it saves energy against a well-tuned schedule. The script keeps the 6:00
+  The MPC row is after the corrections D35 and D36; before them it was 6.31 kWh and 2.19 EUR.
+  The set-back PI rows were rerun after the final audit and are unchanged.
+- **Consequence:** the MPC's energy saving against the set-back PI (2.2 % with the 6:00 start;
+  1.6 % before D35-D36) is smaller than the effect of the PI's start time. With a start at 7:00
+  the MPC saves 0.3 % (6.27 against 6.29 kWh; before D35-D36 the two matched, 6.31 against
+  6.29 kWh), and a start at 7:30 uses 0.6 % less than the MPC. The comparison shows that the
+  MPC finds a good start by itself, not that it saves energy against a well-tuned schedule. The script keeps the 6:00
   reference so that the table stays comparable with earlier versions.
 
 ### D34. Effect of D29-D32 on the results
 - **Timing:** after the reruns. One parameter was changed after them: k_o, refitted because the
   end-of-round check found its fit inconsistent with that of k_e, not because of a result
-  (D30). The table is after that change; "before" is the model before D29-D32.
+  (D30). The table is after that change; "before" is the model before D29-D32. "After" is the
+  state at the end of that round, before the corrections D35-D37 of the final audit, which
+  changed some of these values again (current values in D35-D37 and [results.md](results.md)).
 
   | Result | Before | After |
   |---|---|---|
@@ -542,10 +550,217 @@ a reference used in the MPC comparison. D34 lists the effect on the results.
   costs 6.6 % less than the set-back PI, for 16 % more energy. Before, it was level. The
   attribution to the individual changes is in [results.md](results.md#model-predictive-control).
 - **Also changed:** the PI with handler C now starts the compressor more often in total than
-  on/off (251 against 172; before, 169 against 174), and the time-of-use MPC uses more energy
-  than the PI at a constant set point (7.44 against 7.39 kWh; before, 6.39 against 6.85).
+  on/off (251 against 172; before, 169 against 174; 171 for on/off after D37), and the
+  time-of-use MPC uses more energy than the PI at a constant set point (7.44 against 7.39 kWh;
+  before, 6.39 against 6.85; 7.41 after D35-D36).
 - **Unchanged:** the energy ordering of the five standard controllers, the humidity controllers
   reaching 55 % RH, the robustness of the MPC, and the ventilation findings.
+
+## Corrections after the final audit
+
+A final audit read the code, the scripts and the documents against each other and reran the
+studies. It found two defects in the MPC (D35, D36), two in the indicators (D37, D38), a tuning
+statement that did not hold (D39), a defect in the frost-limited unit (D40), missing input and
+consistency checks (D41) and modelling assumptions that were not written down (D42). D35-D38
+change published numbers; every table in `figures/` and in [results.md](results.md) was
+regenerated. No parameter was changed.
+
+### D35. MPC set point clipped with the band at the end of the first prediction step
+- **Timing:** after observation; found in the final audit.
+- **Defect:** the PI's set point is T[0], the planned air temperature at t + 15 min, the end of
+  the step the PI then tracks. It was clipped to the planning band in force at the solve instant
+  t instead of the band at t + 15 min, which the LP itself used for T[0]. At the 18:00 solve the
+  instant 18:00 counts as occupied (D17), so the PI was held at ≤ 25.4 °C from 18:00 to 18:15,
+  a quarter hour that is unoccupied and that the planner lets float. At the 7:45 solve the
+  occupied limit was not applied to the step ending at 8:00; that had no effect, because the LP
+  already kept T[0] inside the occupied band.
+- **How found:** by checking the time each planned quantity refers to (forecasts at mid-step,
+  ventilation at step start, band at step end) against the use of the plan in `step`, and
+  rerunning the MPC cases with the clip at t + 15 min.
+- **Fix:** clip with `planning_band(t + Ts_pred)`. A test checks both edges of the occupied
+  period.
+- **Effect on results (this correction alone):** MPC 6.31 → 6.26 kWh, 2.19 → 2.15 EUR; tariff MPC
+  7.44 → 7.38 kWh, 1.99 → 1.96 EUR; comfort unchanged (0.000 K·h). The combined effect with D36
+  is in D36.
+
+### D36. MPC capacity and cost net of the indoor-fan heat
+- **Timing:** after observation; found in the final audit.
+- **Defect:** the LP variable is the cooling Q_c of the RC model, and the Kalman filter is fed
+  the net cooling Q_sens − P_fan_in (the indoor-fan heat stays in the room). The capacity limit
+  U_max and the energy per unit of cooling c were computed from the gross Q_sens: U_max was
+  25 W (1.5 %) too high and c about 2.8 % too low at half speed.
+- **How found:** by checking that the planner, the filter and the RC model use the same
+  quantity for the cooling.
+- **Fix:** subtract P_fan_in in both. A test checks that the LP capacity equals the filter input
+  at the same operating point.
+- **Effect on results (this correction alone):** MPC 6.31 → 6.30 kWh; tariff MPC cost 1.99 →
+  1.98 EUR. Together with D35 (current values):
+
+  | Result | Before D35-D36 | After |
+  |---|---|---|
+  | MPC energy | 6.31 kWh | 6.27 kWh |
+  | MPC cost, time-of-use | 2.19 EUR | 2.15 EUR |
+  | MPC starts | 149 | 148 |
+  | Time-of-use MPC energy | 7.44 kWh | 7.41 kWh |
+  | Time-of-use MPC cost | 1.99 EUR | 1.97 EUR |
+  | Time-of-use MPC starts | 186 | 183 |
+  | MPC, model off by 20 %: energy, starts | 6.41 kWh, 179 | 6.33 kWh, 168 |
+  | MPC, biased forecast: energy, cost, starts | 6.28 kWh, 2.18 EUR, 147 | 6.25 kWh, 2.15 EUR, 145 |
+  | MPC energy against set-back PI (6:00) | −1.6 % | −2.2 % |
+  | MPC energy against set-back PI (7:00) | +0.3 % | −0.3 % |
+  | Time-of-use MPC cost against set-back PI (6:00) | −6.6 % | −7.5 % |
+  | Time-of-use MPC cost against MPC without tariff | −9 % | −8 % |
+  | Time-of-use MPC energy against set-back PI (6:00) | +16 % | +16 % |
+  | Effect of 20 % model error on MPC energy | +1.6 % | +1.0 % |
+  | Effect of the biased forecast on MPC energy | −0.5 % | −0.3 % |
+
+  Comfort is 0.000 K·h outside the band in every case, before and after. The conclusions stand:
+  the MPC saves little against a well-scheduled PI, and the tariff pays at a price in energy.
+
+### D37. Compressor starts counted at window boundaries
+- **Timing:** after observation; found in the final audit.
+- **Defect:** the indicators counted the first row of a result as a start whenever the
+  compressor ran in it. The studies evaluate a window after three warm-up days; when the window
+  begins inside a running cycle, that row is not a start. Of the published runs only the on/off
+  thermostat was running at the window start.
+- **How found:** by recounting the starts of every published run from the commands, including
+  the row before each window.
+- **Fix:** a windowed result records whether the compressor ran on the step before it
+  (`UnitLog.running_before`), and the first row counts as a start only if it did not. A test
+  checks a window that starts inside a cycle.
+- **Effect on results:** on/off thermostat 172 → 171 starts, 10.4 → 10.3 starts per running hour
+  (also the on/off reference of the humidity table). No other run changes.
+
+### D38. Fan travel only between running samples
+- **Timing:** after observation; found in the final audit.
+- **Defect:** the fan travel of the humidity study (total variation of the fan command per
+  running hour) concatenated the running samples, so the step between the last command of one
+  compressor cycle and the first of the next was counted although the fan was off in between,
+  and the stale command of the last row was included. Exactly half of H1's value was this
+  cycle-to-cycle step: its proportional term moves while the compressor is off, whereas H2's
+  integrator is held.
+- **How found:** by recomputing the column from the commands with only consecutive running
+  samples.
+- **Fix:** `metrics.fan_travel_per_h` counts |f[k+1] − f[k]| only where both rows run, drops the
+  last row like the other indicators, and returns NaN without running time. RH standard
+  deviation and maximum in the same table now also drop the last row (no change in value).
+- **Effect on results:** fan travel per running hour for H1, nominal / dirty coil / 3.5 kW unit:
+  0.27 / 0.30 / 0.53 → 0.14 / 0.15 / 0.26; H2 unchanged (0.26 / 0.29 / 0.36). The ordering is
+  reversed: H1 now moves the fan less than H2 for all three units, whereas the table suggested
+  the opposite. The column had not been quoted in the documentation.
+
+### D39. Process gain of the temperature PI
+- **Timing:** after observation; found in the final audit. Analysis only; the tuning was kept.
+- **Observation:** `room_pi_tuning` applies the SIMC rules with Q_d = 2620 W per unit of demand,
+  the total compressor capacity (sensible plus latent) at full speed and the rated evaporating
+  temperature, at 32 °C outdoors. The air temperature responds only to the net sensible cooling,
+  and the unit is strongly nonlinear in the demand. Gains measured at the operating point:
+  - below s_min (sigma-delta cycling, where the PI spends most of its time in the standard
+    runs): about 3250 W of net sensible cooling per unit of demand;
+  - above s_min, where the coil is wet: an incremental sensible gain of 700-1000 W.
+
+  So the documented design (τ_c = 900 s) does not describe the achieved loop. Measured
+  closed-loop 63 % times for set-point steps of 0.5 K: 600-1140 s at low load (design 960 s,
+  τ_c + θ plus the zero-order hold) and 2100-2340 s in the modulating range.
+- **Alternative tested:** taking Q_d as the net sensible output at s_min per unit of demand
+  (≈ 3250 W). It hardly changed the low-load response (600-1200 s), because the sigma-delta
+  modulation dominates it, and made the modulating range slower still. With it the PI (C) used
+  7.36 instead of 7.39 kWh with 243 instead of 251 starts, but the MPC runs left the band
+  (0.003-0.006 K·h outside it for the nominal, tariff and biased-forecast cases, against
+  0.000), so the 0.6 K margin of D18 would have had to be retuned.
+- **Decision:** keep the tuning and the D18 margin; document the gains and the measured
+  closed-loop times in the docstring of `room_pi_tuning` and in the known limitations.
+- **Effect on results:** none.
+
+### D40. Frost-limited cycle efficiency at the effective speed
+- **Timing:** after observation; found in the final audit.
+- **Defect:** when frost protection holds the evaporating temperature at 0.5 °C, the compressor
+  in effect slows to the speed s_eff = s Q_coil(0.5 °C) / Q_comp(s, 0.5 °C) whose capacity the
+  coil takes. The cycle efficiency was still evaluated at the commanded speed s. At 20 °C and
+  10 % RH return air, −10 °C outdoors, s = 1 and 40 % fan (s_eff = 0.37) this overstated the COP
+  by 25 %; at 22 °C, 0.008 kg/kg and 30 °C by 0.3 %. Where s_eff fell below s_min the unit
+  delivered that capacity continuously, which a compressor cannot do. The module docstring also
+  said frost protection was active only at low fan speed and high load; it is also reached at
+  full fan with cool, very dry return air and cold outdoor air.
+- **How found:** by sweeping the unit model over the envelope (return air 15-35 °C and 10-95 %
+  RH, outdoor −10 to 50 °C, all speeds and fan settings) and comparing the frost-limited points
+  with the cycle evaluated at s_eff.
+- **Fix:** the efficiency is evaluated at s_eff. If s_eff < s_min the compressor cycles at s_min
+  with duty s_eff / s_min: the returned state is the cycle average and each on-period runs at
+  s_min with the load Q_coil s_min / s_eff. Power and COP stay continuous at the onset of frost
+  protection and at s_eff = s_min (tests).
+- **Effect on results:** none. No published run is frost-limited; the evaporating temperature
+  stays above 12.5 °C in the humidity runs. At the example point the COP goes from 9.05 to 7.23.
+
+### D41. Robustness checks
+- **Timing:** after observation; found in the final audit, by running the code with inputs
+  outside those of the studies.
+- **Defects and fixes** (behaviour before → after):
+  - **Divergence:** RK4 above its stability limit (≈ 1 100 s for the default room) returned
+    nonsense without warning, for example W between −12 and 19 kg/kg at Δt = 1 200 s. The
+    simulator now stops as soon as the state is non-finite or W, C or an active buffer's φ_b
+    is negative, and reports the stability limit estimated from the Jacobian at the initial
+    state (`rk4_stability_limit` added next to the Euler limit).
+  - **Input validation:** negative room parameters (h_i, ach, buffer), a negative ventilation
+    flow (which reversed the ventilation terms and made the CO2 balance unstable: 6·10¹¹ ppm
+    after a day), RH_o outside [0, 1], sunset before sunrise, a result window outside the run,
+    and windows without occupied rows now raise a clear error, or give NaN with a warning for
+    the occupied means, instead of silent nonsense or an obscure numpy error.
+  - **Zero-capacity buffer:** with zero buffer density, depth or slope the buffer stored no
+    water but still exchanged it, an unlimited source (water residual 5.7 kg in a day). A buffer
+    that stores no water now exchanges none; the conductance also tends to 0 for h_i = 0 or zero
+    permeability instead of raising ZeroDivisionError.
+  - **Periodic state with frozen states:** with the buffer off, φ_b has no dynamics and the
+    Newton matrix is singular; the shooting worked only through finite-difference round-off and
+    failed for φ_b = 0. States without dynamics now keep their guess and Newton solves for the
+    others; if such a state drifts (for example an open mass integrator), a clear error says that
+    no periodic state exists.
+  - **Daily windows across midnight:** occupancy intervals, ventilation and comfort schedules and
+    tariff peaks with start > end (for example 22 h to 6 h) were silently never active. They now
+    cross midnight; start = end and hours outside [0, 24] are rejected.
+  - **Sampling period:** every discrete element (PI, low-load handler, Kalman filter, MPC, humidity
+    and ventilation loops) uses its own Ts, so running a 60 s controller every 30 s silently
+    doubled the PI integral gain and the Kalman prediction step. The simulator now rejects a
+    controller whose Ts differs from `dt_ctrl`, and composite controllers reject parts with
+    different periods.
+  - **Read-only discretisation:** the cached exact discretisation of the control model returned
+    the same arrays to every caller, so an in-place change would have corrupted the cache. They
+    are now read-only.
+  - **Failed LP:** after a failed solve the set point and the move were taken from step 0 of the
+    previous plan, a step that had already passed. They are now taken from that plan shifted to
+    the current step.
+  - **Smaller items:** dew point of dry air −∞ instead of NaN; moisture time constant ∞ for a
+    sealed room instead of ZeroDivisionError; peak shading of the MPC figure for a window that
+    starts inside the peak; step plots no longer draw the command of the last row, which acts
+    after the end of the result.
+- **Effect on results:** none. The published runs use the default buffer, Δt = 60 s, controllers
+  sampled at their own 60 s, non-negative flows, daily windows within one day and no failed LP
+  solves; every table was regenerated and only the values listed in D35-D38 changed.
+
+### D42. Documented modelling assumptions of the coil
+- **Timing:** after observation; found in the final audit.
+- **Held water on a dry coil while the compressor runs:** the held water changes only through
+  condensation while the compressor runs. On a coil that is dry under the current conditions it
+  neither drains nor re-evaporates, even with the surface above the dew point; it re-evaporates
+  in the next fan-only period. This is the on-cycle assumption of Henderson and Rengarajan
+  (1996). It was not written down. In the published PI runs a dry coil with the compressor on
+  occurs 83 (handler C) and 34 (handler A) times per day, each time during a 2-3 minute start-up
+  ramp; in steady dry running with water held the error in the drain and latent bookkeeping is
+  at most the holdup of 0.25 kg. Kept as a documented assumption (module docstring, known
+  limitations).
+- **Fan-only coil state:** below 5 % of the holdup the film evaporates in proportion to the
+  water held, so M_c decays exponentially and never reaches zero. The surface temperature and
+  wetted fraction stayed at the wet values (wet bulb, 1) as long as any water was held, so the
+  thermistor read the wet-bulb temperature indefinitely. They now follow the same evaporation
+  weight as the outlet humidity and go continuously to the dry values (return-air temperature,
+  0).
+- **Docstrings corrected:** `operate(M_c=None)` treats the coil as full with the compressor on
+  and as dry in fan-only operation; with the compressor on the fan runs at least at f_min even
+  if f ≤ 0 is commanded; during the start-up ramp the reported COP is that of the requested
+  operating point, not delivered capacity over compressor power.
+- **Effect on results:** none. The humidity controllers freeze their integrators while the
+  compressor is off, and no controller in the studies reads the thermistor in fan-only
+  operation.
 
 ## Structure
 
@@ -576,7 +791,7 @@ a reference used in the MPC comparison. D34 lists the effect on the results.
 | starts PI vs on/off | ratio < 0.6 after D14 | test | compared per running hour, the quantity relevant to wear |
 | T_max occupied < 26.0 | 26.03 °C; then relaxed to 26.5 without a reason | test (threshold was arbitrary) | removed; comfort is checked once, against the degree-hour criterion in `tests/criteria.py` |
 | `dt_ctrl` without controller | ValueError | **code** | ratio checked only when a controller is given |
-| PI (C) starts fewer than on/off | 166 against 114 after D29-D32 | test | the ordering of total starts was a result read off a run (in the three-day study 169 against 174 before, 251 against 172 after), not a requirement; now checked per running hour (in the test run 8.0 against 10.4), plus fewer total starts for handler A |
+| PI (C) starts fewer than on/off | 166 against 114 after D29-D32 | test | the ordering of total starts was a result read off a run (in the three-day study 169 against 174 before, 251 against 172 after, 251 against 171 after D37), not a requirement; now checked per running hour (in the test run 8.0 against 10.4), plus fewer total starts for handler A |
 | PI rejects a load step, "continuous modulation" | compressor cycled at s_min after D30 | test | the premise (high load) no longer held with the larger minimum capacity; sun on the window raised from 300 to 600 W/m² so that it holds again |
 | H2 inner loop on the real coil | coil 11.9 °C against a target of 11.5 °C | test | the comment said the target was 13 °C but the RH input made it 11.5 °C, below what the coil reaches at 40 % fan after D30; RH input corrected to give 13 °C, and the test now checks that the target is reachable |
 | Dry/wet transition continuous | no switch left after D29 | test replaced | continuity checked over the whole partially wet range and at both boundaries |
@@ -603,10 +818,12 @@ stated basis:
 ## Known limitations
 
 - Water held on the coil neither evaporates nor drains while the compressor runs with a dry coil
-  (surface above the dew point). Physically the film would evaporate. Under PI control the coil
-  is partly wet and receives a little condensate (0.9 kg in three days). Under on/off control the
-  coil runs wet. The effect on reported numbers is expected to be small but has not been
-  quantified.
+  (surface above the dew point); it re-evaporates only in the next fan-only period (D42).
+  Physically the film would evaporate. In the published runs this happens only during the
+  start-up ramps of 2-3 minutes; the water so retained is at most the coil holdup of 0.25 kg.
+  The effect on reported numbers has not been computed.
+- The PI's process gain is a nominal value; the unit is strongly nonlinear in the demand, and
+  the closed-loop time in the modulating range is 2.2-2.4 times the design value (D39).
 - The coil has a uniform refrigerant temperature: no superheated end and no fin temperature
   distribution (D29). Capacity dependence on evaporating and outdoor temperature is linear and
   fitted to one example curve of a fixed-speed unit at the rating point only (D30).

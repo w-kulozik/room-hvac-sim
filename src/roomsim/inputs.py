@@ -16,7 +16,7 @@ from typing import NamedTuple, Protocol
 import numpy as np
 
 from . import psychro
-from ._typing import FloatArray, FloatOrArray
+from ._typing import BoolArray, FloatArray, FloatOrArray
 
 DAY = 86_400.0
 HOUR = 3_600.0
@@ -70,6 +70,30 @@ class Scenario(Protocol):
         ...
 
 
+def _in_interval(h: FloatArray, start: float, end: float) -> BoolArray:
+    """Return where the clock hour lies in the interval [start, end).
+
+    An interval with start > end wraps around midnight: [start, 24) together with [0, end).
+
+    Parameters
+    ----------
+    h : ndarray
+        Clock hour, h.
+    start, end : float
+        Interval limits, h.
+
+    Returns
+    -------
+    ndarray of bool
+        True inside the interval.
+    """
+    if start <= end:
+        inside: BoolArray = (h >= start) & (h < end)
+    else:
+        inside = (h >= start) | (h < end)
+    return inside
+
+
 def hour_of_day(t: FloatOrArray) -> FloatArray:
     """Compute the clock hour in [0, 24).
 
@@ -99,7 +123,8 @@ class SummerScenario:
           (0.008 -> 0.0165 kg/kg), which overstates the afternoon latent load.
     G_sol half-sine between sunrise and sunset, zero at night.
     n_occ step function, occupied on [occ_start, occ_end) with n_people; or, if ``occupancy`` is
-          given, a profile of (start_h, end_h, people) intervals (zero outside them).
+          given, a profile of (start_h, end_h, people) intervals (zero outside them). An
+          interval with start > end crosses midnight (e.g. 22 h to 6 h).
 
     Attributes
     ----------
@@ -126,6 +151,11 @@ class SummerScenario:
     occupancy : tuple of (float, float, float), optional
         Intervals (start_h, end_h, people), h, h, -. If given, it replaces n_people and the
         occupied period; a later interval overrides an earlier one where they overlap.
+
+    Raises
+    ------
+    ValueError
+        If RH_o is outside [0, 1] or sunset_h <= sunrise_h.
     """
 
     T_mean: float = 26.0
@@ -141,6 +171,14 @@ class SummerScenario:
     occ_end_h: float = 18.0
     C_o: float = 420.0
     occupancy: tuple[tuple[float, float, float], ...] | None = None
+
+    def __post_init__(self) -> None:
+        """Reject a relative humidity outside 0..1 and a non-positive day length."""
+        if not 0.0 <= self.RH_o <= 1.0:
+            raise ValueError(f"RH_o = {self.RH_o!r} is invalid; it must be a fraction in [0, 1]")
+        if not self.sunset_h > self.sunrise_h:
+            raise ValueError(f"sunset_h = {self.sunset_h!r} is invalid; it must be greater than "
+                             f"sunrise_h = {self.sunrise_h!r}")
 
     def T_o(self, t: FloatOrArray) -> FloatArray:
         """Compute the outdoor dry-bulb temperature.
@@ -212,11 +250,11 @@ class SummerScenario:
         """
         h = hour_of_day(t)
         if self.occupancy is None:
-            occupied = (h >= self.occ_start_h) & (h < self.occ_end_h)
+            occupied = _in_interval(h, self.occ_start_h, self.occ_end_h)
             return np.where(occupied, self.n_people, 0.0)
         n = np.zeros_like(h)
         for start, end, people in self.occupancy:
-            n = np.where((h >= start) & (h < end), people, n)
+            n = np.where(_in_interval(h, start, end), people, n)
         return n
 
     def __call__(self, t: FloatOrArray) -> Disturbances:

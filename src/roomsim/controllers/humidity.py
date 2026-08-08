@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from .._typing import FloatArray
 from ..plant import IDX_Y_RH, IDX_Y_TCOIL
+from .base import common_sampling_period, sampling_period
 from .pi import DiscretePI
 from .pi_unit import PIUnitController
 
@@ -46,11 +47,19 @@ class FanHumidityPI:
         Minimum fan speed, -.
     Ts : float, optional
         Sampling period, s.
+
+    Raises
+    ------
+    ValueError
+        If ``Ts`` differs from the sampling period of ``temperature``.
     """
 
     def __init__(self, temperature: PIUnitController, RH_set: float = 0.55,
                  Kp: float = 0.05, Ti: float = 1800.0, f_min: float = 0.4,
                  Ts: float = 60.0) -> None:
+        common_sampling_period("FanHumidityPI", Ts=Ts,
+                               temperature_Ts=sampling_period(temperature))
+        self.Ts = Ts
         self.temperature, self.RH_set, self.f_min = temperature, RH_set, f_min
         self.pi = DiscretePI(Kp, Ti, Ts)      # demand per %RH
 
@@ -103,7 +112,12 @@ class CoilCascade:
     settle_samples : int, optional
         Samples after a compressor start before the inner loop acts.
     Ts : float, optional
-        Sampling period, s.
+        Sampling period, s (``Ki_fan`` and ``settle_samples`` are per sample).
+
+    Raises
+    ------
+    ValueError
+        If ``Ts`` differs from the sampling period of ``temperature``.
 
     Attributes
     ----------
@@ -119,6 +133,8 @@ class CoilCascade:
                  Kp: float = 0.3, Ti: float = 1800.0, T_s_max: float = 20.0, T_s_min: float = 8.0,
                  Ki_fan: float = 0.04, f_min: float = 0.4, settle_samples: int = 2,
                  Ts: float = 60.0) -> None:
+        common_sampling_period("CoilCascade", Ts=Ts, temperature_Ts=sampling_period(temperature))
+        self.Ts = Ts
         self.temperature, self.RH_set = temperature, RH_set
         self.T_s_max, self.T_s_min = T_s_max, T_s_min
         self.Ki_fan, self.f_min, self.settle = Ki_fan, f_min, settle_samples

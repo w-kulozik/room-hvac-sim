@@ -17,10 +17,6 @@ import numpy as np
 
 from ._typing import FloatArray, FloatOrArray
 
-"""Array of float64 values."""
-
-"""Scalar or array argument; arrays are broadcast element-wise."""
-
 P_ATM = 101_325.0  # standard atmospheric pressure, Pa
 EPS = 0.622        # ratio of molar masses M_w / M_da (rounded, as is usual in HVAC)
 
@@ -140,9 +136,17 @@ def dew_point_from_pw(p_w: FloatOrArray) -> FloatArray:
     Returns
     -------
     ndarray
-        Dew-point temperature, degC.
+        Dew-point temperature, degC; -inf for p_w = 0 (dry air), the limit of the inverse
+        Magnus form.
     """
-    g = np.log(np.asarray(p_w, dtype=float) / _A)
+    p_w = np.asarray(p_w, dtype=float)
+    dry = p_w == 0.0
+    if np.any(dry):
+        # log(0) = -inf would give -inf/inf = nan; return the limit instead
+        g = np.log(np.where(dry, _A, p_w) / _A)
+        limit: FloatArray = np.where(dry, -np.inf, _C * g / (_B - g))[()]
+        return limit
+    g = np.log(p_w / _A)
     out: FloatArray = _C * g / (_B - g)
     return out
 

@@ -20,7 +20,7 @@ import numpy as np
 from .._typing import FloatArray, FloatOrArray
 from ..params import RoomParams
 from ..plant import IDX_Y_CO2, IDX_Y_TA
-from .base import Controller, VentilationSchedule
+from .base import Controller, VentilationSchedule, common_sampling_period, sampling_period
 from .mpc import ComfortSchedule
 from .pi import DiscretePI, simc_pi
 
@@ -45,9 +45,22 @@ class WithVentilation:
         Controller providing the compressor and fan commands.
     strategy : VentilationStrategy
         Strategy providing the outdoor-air flow.
+
+    Attributes
+    ----------
+    Ts : float or None
+        Sampling period assumed by the inner controller or the strategy, s; None if neither
+        assumes one.
+
+    Raises
+    ------
+    ValueError
+        If the inner controller and the strategy assume different sampling periods.
     """
 
     def __init__(self, inner: Controller, strategy: VentilationStrategy) -> None:
+        self.Ts = common_sampling_period("WithVentilation", inner_Ts=sampling_period(inner),
+                                         strategy_Ts=sampling_period(strategy))
         self.inner, self.strategy = inner, strategy
 
     def step(self, t: float, y: FloatArray) -> FloatArray:
@@ -144,6 +157,7 @@ class DemandControlledPI:
                  comfort: ComfortSchedule = ComfortSchedule(),  # noqa: B008  (frozen dataclass)
                  Ts: float = 60.0) -> None:
         Kp, Ti = dcv_tuning(p, C_set, Ts=Ts)
+        self.Ts = Ts
         self.pi = DiscretePI(Kp, Ti, Ts)
         self.C_set, self.V_min, self.V_max, self.comfort = C_set, V_min, V_max, comfort
 
@@ -251,6 +265,11 @@ class NightFlush:
         Air temperature at or below which flushing stops, degC.
     comfort : ComfortSchedule, optional
         Occupancy schedule.
+
+    Attributes
+    ----------
+    Ts : float or None
+        Sampling period assumed by the inner strategy, s; None if it assumes none.
     """
 
     def __init__(self, inner: VentilationStrategy, outdoor: Callable[[float], FloatOrArray],
@@ -258,6 +277,7 @@ class NightFlush:
                  comfort: ComfortSchedule = ComfortSchedule(),  # noqa: B008  (frozen dataclass)
                  ) -> None:
         self.inner, self.outdoor = inner, outdoor
+        self.Ts = sampling_period(inner)
         self.V_flush, self.dT, self.T_min, self.comfort = V_flush, dT, T_min, comfort
 
     def step(self, t: float, y: FloatArray) -> float:

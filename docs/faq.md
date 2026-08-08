@@ -62,7 +62,10 @@ and the compressor.
   far from the 0.5 °C limit. At full compressor speed and 40 % fan at rating conditions it is
   3.9 °C; before D30, with a capacity that did not fall, it was −2.8 °C and the protection had to
   act (D7). It is still reached with cool, dry return air (22 °C, 0.008 kg/kg, full speed, 40 %
-  fan), and a test covers that case. The sections of the EnergyPlus Engineering Reference that
+  fan), and also at full fan with cool, very dry return air and cold outdoor air (15-20 °C and
+  10 % RH return air, −10 to 10 °C outdoors); tests cover these cases. The compressor then runs
+  at the slower speed whose capacity the coil takes at 0.5 °C, with the cycle efficiency of that
+  speed, and cycles at minimum speed when that speed is below it (D40). The sections of the EnergyPlus Engineering Reference that
   were read do not cover frost protection of the indoor coil, so no comparison is made on that
   point.
 
@@ -97,13 +100,13 @@ studies use C because they need the PI to keep integrating.
 
 ## 4. When would the MPC pay off, and how does the Kalman filter make it offset-free?
 
-**Payoff.** Against a set-back PI the MPC saves 1.6 % energy, and only because the PI starts at
-6:00; with a start at 7:00 the PI matches it (D33). The nominal MPC has a perfect forecast and
-exact parameters; 20 % parameter errors raise its energy by 1.6 %, a biased forecast changes it
-by less than 1 %.
+**Payoff.** Against a set-back PI the MPC saves 2.2 % energy, and mostly because the PI starts
+at 6:00; with a start at 7:00 the saving is 0.3 %, and with a start at 7:30 the PI uses 0.6 %
+less than the MPC (D33). The nominal MPC has a perfect forecast and exact parameters; 20 %
+parameter errors raise its energy by 1.0 %, a biased forecast lowers it by 0.3 %.
 The MPC pays where a fixed schedule cannot follow what changes:
 
-- **Prices that vary in time.** With a peak/off-peak ratio of 4 the tariff-aware MPC costs 6.6 %
+- **Prices that vary in time.** With a peak/off-peak ratio of 4 the tariff-aware MPC costs 7.5 %
   less than the set-back PI, for 16 % more energy (after D29-D32; before, it was level). Planning
   runs show almost no shift below a ratio of about 3.
 - **Start times that would otherwise need tuning** per season and per room: the MPC finds the

@@ -47,6 +47,10 @@ class UnitLog:
         Cumulative electrical energy since t_0, J.
     M_drain : FloatArray
         Cumulative condensate drained since t_0, kg.
+    running_before : bool
+        True when the compressor was running (s > 0) on the step just before t_0, i.e. the
+        record is a window of a longer run that starts inside a compressor cycle. False for
+        the start of a simulation.
     """
 
     cmd: FloatArray              # held commands [s, f, V_vent]
@@ -54,23 +58,30 @@ class UnitLog:
     M_coil: FloatArray           # water held on the coil, kg
     E_el: FloatArray             # cumulative electrical energy since t_0, J
     M_drain: FloatArray          # cumulative condensate drained since t_0, kg
+    running_before: bool = False  # compressor running on the step before t_0
 
     def window(self, m: BoolArray) -> UnitLog:
-        """Return the rows selected by a mask, with the cumulative quantities restarted.
+        """Return the contiguous rows selected by a mask, with the cumulative quantities restarted.
 
         Parameters
         ----------
         m : BoolArray
-            Boolean mask over the grid points.
+            Boolean mask over the grid points, selecting one contiguous, non-empty block.
 
         Returns
         -------
         UnitLog
-            Selected rows; `E_el` and `M_drain` start from zero at the first selected row.
+            Selected rows; `E_el` and `M_drain` start from zero at the first selected row, and
+            `running_before` holds the compressor state of the row before it (inherited when
+            the block starts at the first row).
         """
+        i0 = int(np.argmax(m))
+        running_before = (bool(self.cmd[i0 - 1, 0] > 0) if i0 > 0  # IDX_CMD_S of simulate
+                          else self.running_before)
         return UnitLog(cmd=self.cmd[m], op={k: v[m] for k, v in self.op.items()},
                        M_coil=self.M_coil[m], E_el=self.E_el[m] - self.E_el[m][0],
-                       M_drain=self.M_drain[m] - self.M_drain[m][0])
+                       M_drain=self.M_drain[m] - self.M_drain[m][0],
+                       running_before=running_before)
 
 
 @dataclass
@@ -248,9 +259,24 @@ class SimResult:
         -------
         SimResult
             Rows with t0 - 1e-9 <= t <= t1 + 1e-9; cumulative quantities start from zero.
+
+        Raises
+        ------
+        ValueError
+            If t1 <= t0, if [t0, t1] does not lie within [t_0, t_N], or if fewer than two
+            grid points fall in the window.
         """
-        t1 = self.t[-1] if t1 is None else t1
+        t1 = float(self.t[-1]) if t1 is None else t1
+        tA, tB = float(self.t[0]), float(self.t[-1])
+        if not t1 > t0:
+            raise ValueError(f"window end t1 = {t1} s must be greater than its start t0 = {t0} s")
+        if t0 < tA - 1e-9 or t1 > tB + 1e-9:
+            raise ValueError(f"window [t0, t1] = [{t0}, {t1}] s must lie within the run "
+                             f"[{tA}, {tB}] s")
         m = (self.t >= t0 - 1e-9) & (self.t <= t1 + 1e-9)
+        if m.sum() < 2:
+            raise ValueError(f"window [t0, t1] = [{t0}, {t1}] s holds {int(m.sum())} grid "
+                             f"point(s); it needs at least two (dt = {self.dt} s)")
         return SimResult(
             t=self.t[m], x=self.x[m], u=self.u[m],
             d=Disturbances(*(np.asarray(f)[m] for f in self.d)),

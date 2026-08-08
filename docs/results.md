@@ -33,7 +33,7 @@ occupied hours (mean CO2 950 ppm):
 
 | Controller | Energy (kWh) | Starts | T rms occ. (K) | RH mean occ. (%) | h RH > 60 % occ. |
 |---|---|---|---|---|---|
-| On/off thermostat (±0.5 K, full speed) | 10.54 | 172 | 0.35 | 50.0 | 0.0 |
+| On/off thermostat (±0.5 K, full speed) | 10.54 | 171 | 0.35 | 50.0 | 0.0 |
 | On/off, fan continuous | 9.88 | 117 | 0.40 | 64.1 | 26.2 |
 | PI + hysteresis low-load handling (A) | 6.85 | 105 | 0.34 | 62.3 | 27.8 |
 | PI + sigma-delta low-load handling (C) | 7.39 | 251 | 0.20 | 62.4 | 27.7 |
@@ -88,7 +88,7 @@ keeps integrating.
 - **Clamped accumulator.** A deficit held back by the minimum run or stop time is not paid back
   later; paying it back had kept the unit off while the room was already warm.
 - **Outcome.** Handler C gives the tightest temperature control, with more but shorter cycles
-  than A: 251 starts against 105, or 8.0 starts per running hour against 3.6 for A and 10.4 for
+  than A: 251 starts against 105, or 8.0 starts per running hour against 3.6 for A and 10.3 for
   on/off. It also uses 8 % more energy than A. The capacity at minimum speed rises when the
   evaporator is warm at low load (decision D30), so the unit cycles more than in earlier versions
   of the model (169 starts for C before).
@@ -131,7 +131,10 @@ the controllers tuned for the nominal unit and running them on a different one (
 bypass factor 0.30, or a 3.5 kW unit) gives the same ordering: across the three units the RH
 standard deviation is 0.60-0.84 % for the cascade against 0.88-0.94 % for H1. The advantage is
 real but small (with the 3.5 kW unit 0.84 against 0.88 %), as expected when the outer process
-(room humidity) is much slower than anything the inner loop rejects.
+(room humidity) is much slower than anything the inner loop rejects. The steadier humidity costs
+fan movement: H1 moves the fan less than the cascade on all three units, 0.14-0.26 against
+0.26-0.36 of full speed per running hour (`figures/humidity_control.md`; only steps between
+consecutive samples with the compressor running are counted, decision D38).
 
 While the compressor runs, both keep the fan at about 56 % on average and never at its minimum,
 and the evaporating temperature stays above 12.5 °C, far from the frost limit of 0.5 °C.
@@ -166,7 +169,11 @@ solves, left the cycling without feedback and produced 3.75 K·h outside the ban
 In the final structure the plan sets the PI's set point, and the PI (60 s) does the tracking and
 the cycling. The planner keeps 0.6 K inside the occupied band for the PI's ripple; the margin
 was chosen from a sweep (0.3 K: 0.18 K·h outside the band, 0.6 K: 0.000 K·h, for 4 % more
-energy; see D18 and D21 in [decisions.md](decisions.md)).
+energy; see D18 and D21 in [decisions.md](decisions.md); the sweep was run before the MPC
+corrections D35 and D36). The PI's set point is the planned temperature at the end of the
+current 15-minute step, kept inside the band that applies at that instant (D35), and the
+planner's capacity and cost are net of the indoor-fan heat, like the cooling the Kalman filter
+sees (D36).
 
 ![Air temperature and electrical power over one day for the set-back PI, the MPC and the MPC with a time-of-use tariff](../figures/mpc_day.png)
 
@@ -176,27 +183,27 @@ Three days, ventilation during occupied hours, tariff 0.15 / 0.60 EUR/kWh with t
 |---|---|---|---|---|
 | PI, 25 °C constant | 7.39 | 2.48 | 0.000 | 251 |
 | PI, set-back, fixed start 6:00 | 6.41 | 2.13 | 0.000 | 114 |
-| MPC | 6.31 | 2.19 | 0.000 | 149 |
-| MPC, time-of-use tariff | 7.44 | 1.99 | 0.000 | 186 |
-| MPC, model parameters off by 20 % | 6.41 | 2.19 | 0.000 | 179 |
-| MPC, forecast +2 K and -30 % sun | 6.28 | 2.18 | 0.000 | 147 |
+| MPC | 6.27 | 2.15 | 0.000 | 148 |
+| MPC, time-of-use tariff | 7.41 | 1.97 | 0.000 | 183 |
+| MPC, model parameters off by 20 % | 6.33 | 2.15 | 0.000 | 168 |
+| MPC, forecast +2 K and -30 % sun | 6.25 | 2.15 | 0.000 | 145 |
 
 The cost column applies the time-of-use tariff to every run, including those whose controller
 does not know about it.
 
-- **Against a well-configured PI the energy saving is small**: 1.6 % against set-back with a
+- **Against a well-configured PI the energy saving is small**: 2.2 % against set-back with a
   fixed start at 6:00, 15 % against a constant set point. The nominal MPC has a perfect weather
-  forecast (the forecast is the scenario itself) and exact model parameters, so 1.6 % is what it
+  forecast (the forecast is the scenario itself) and exact model parameters, so 2.2 % is what it
   achieves under ideal information; the last two rows relax each assumption once. Most of what
   the MPC finds (let the room float at night, start just in time, sit at the warm edge of the
   band) a PI with a good schedule already gets.
 - **The 6:00 start of the reference is not optimised** (decision D33). With a start at 7:00 the
-  set-back PI uses 6.29 kWh, slightly less than the MPC's 6.31 kWh, and at 7:30 1 % less, without
-  leaving the band.
+  set-back PI uses 6.29 kWh, 0.3 % more than the MPC's 6.27 kWh, and with a start at 7:30
+  6.23 kWh, 0.6 % less than the MPC, without leaving the band.
   The MPC's advantage is that it finds the start by itself.
 - **A time-of-use tariff now pays, at a price in energy.** With the tariff the MPC pre-cools
-  overnight, storing cold in the thermal mass: it costs 6.6 % less than the set-back PI (1.99
-  against 2.13 EUR) and 9 % less than the MPC without the tariff, but uses 16 % more energy than
+  overnight, storing cold in the thermal mass: it costs 7.5 % less than the set-back PI (1.97
+  against 2.13 EUR) and 8 % less than the MPC without the tariff, but uses 16 % more energy than
   the set-back PI. Before the unit model changes of decisions D29-D32 it ended level with the
   set-back PI (1.97 against 1.96 EUR). Rerunning with the evaporating-temperature dependence of
   the capacity switched off (k_e = 0) nearly restores the earlier figures (set-back PI 5.94 kWh
@@ -204,12 +211,13 @@ does not know about it.
   so that dependence causes the change: it raises
   the capacity at minimum speed, and the set-back PI then cycles more in the occupied hours (114
   starts against 51 before), each start with a ramp at full power (decision D9). The tariff MPC's
-  cost hardly moves. An earlier version reported a 10 % saving that was traced to an unbounded
-  cycle COP at night (decision D20). The result depends on the night-time and part-load COP,
+  cost hardly moves. (These attribution runs were made before the MPC corrections D35 and D36,
+  which lowered the tariff MPC's cost from 1.99 to 1.97 EUR.) An earlier version reported a 10 %
+  saving that was traced to an unbounded cycle COP at night (decision D20). The result depends on the night-time and part-load COP,
   which the 15 K minimum lift bounds, and the comparison with a real unit below shows that bound
   to be conservative.
-- **Robustness**: 20 % errors in five model parameters raise the energy by 1.6 %, and a forecast
-  2 K too warm with 30 % less sun changes it by less than 1 %; both keep the comfort criterion.
+- **Robustness**: 20 % errors in five model parameters raise the energy by 1.0 %, and a forecast
+  2 K too warm with 30 % less sun lowers it by 0.3 %; both keep the comfort criterion.
   The Kalman disturbance state absorbs both.
 
 **Load shifting has a threshold and a ceiling.** Single 24-hour plans (planner only, no closed
@@ -227,7 +235,8 @@ Below a ratio of about 3 almost nothing moves; from about 6 the share stops grow
 set by how far the planner may pre-cool. Pre-cooling the air pulls heat out of the strongly
 coupled mass (180 W/K), and much of it leaks back before the peak. The tariff of the closed-loop
 runs above has a ratio of 4. These planning runs are not part of the scripts; the test suite
-checks the two ends (no shift at a ratio of 2, a shift at 6).
+checks the two ends (no shift at a ratio of 2, a shift at 6). They were computed before the
+planner's capacity and cost were made net of the indoor-fan heat (D36) and were not repeated.
 
 ## Ventilation
 
@@ -273,8 +282,12 @@ Total energy is the air conditioner plus the ventilation fan over three days. Th
     meeting.
   - A fixed flow sized for the peak meets it, but with 78 % more air and 7 % more energy than
     demand control.
-- **Staged levels perform like the continuous PI** (energy within 0.4 %, peak CO₂ within 6 ppm).
-  Three levels are enough here; the continuous loop adds nothing measurable.
+- **Staged levels perform like the continuous PI with variable occupancy** (energy within 0.4 %,
+  peak CO₂ within 6 ppm: 955 against 949 ppm). In the design case they differ more: V2 peaks at
+  950 ppm against 901 ppm for V1 (49 ppm higher) with 5 % less air (1 366 against 1 438 m³) and
+  the same energy within 0.3 % (8.30 against 8.32 kWh); both stay below 1 000 ppm. Three levels
+  are enough to meet the requirement here; the continuous loop holds its set point more tightly
+  when the load is steady.
 - **Night flush pays only at reduced flow.** At the full 108 m³/h (design case) it saves
   0.72 kWh of compressor energy and the fan uses 0.71 kWh more: no net gain. An exploratory sweep
   of the flush flow (design case) gives the lowest total at 54-72 m³/h, 3.7 % below V1,

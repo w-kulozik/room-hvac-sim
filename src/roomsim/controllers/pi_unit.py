@@ -16,7 +16,14 @@ from .._typing import FloatArray
 from ..ac_unit import ACUnit
 from ..params import RoomParams
 from ..plant import IDX_Y_TA
-from .base import NO_VENTILATION, CompressorGuard, VentilationSchedule, fan_command
+from .base import (
+    NO_VENTILATION,
+    CompressorGuard,
+    VentilationSchedule,
+    common_sampling_period,
+    fan_command,
+    sampling_period,
+)
 from .lowload import HysteresisLowLoad, LowLoadHandler, SigmaDeltaLowLoad, ripple_T_ref
 from .pi import DiscretePI, room_pi_tuning
 
@@ -46,11 +53,18 @@ class PIUnitController:
     ----------
     last_demand : float
         Unsaturated PI demand of the last sample, -.
+
+    Raises
+    ------
+    ValueError
+        If the PI and the low-load handler assume different sampling periods.
     """
 
     def __init__(self, pi: DiscretePI, lowload: LowLoadHandler, T_set: SetPoint = 25.0,
                  fan: float = 1.0, fan_mode: str = "auto",
                  ventilation: VentilationSchedule = NO_VENTILATION) -> None:
+        common_sampling_period("PIUnitController", pi_Ts=pi.Ts,
+                               lowload_Ts=sampling_period(lowload))
         self.pi, self.lowload = pi, lowload
         self.T_set, self.fan, self.fan_mode, self.ventilation = T_set, fan, fan_mode, ventilation
         self.last_demand = 0.0
@@ -59,6 +73,11 @@ class PIUnitController:
     def guard(self) -> CompressorGuard:
         """Compressor guard of the low-load handler."""
         return self.lowload.guard
+
+    @property
+    def Ts(self) -> float:
+        """Sampling period the PI (and the low-load handler) assume, s."""
+        return self.pi.Ts
 
     def set_point(self, t: float) -> float:
         """Return the set point at time t (s), degC; T_set may be a constant or a schedule."""

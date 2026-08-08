@@ -27,11 +27,12 @@ All results are from simulation of one synthetic summer day, repeated (see Limit
    point for 9 % more energy than the plain PI, and still 23-24 % less than on/off. This includes
    the capacity the unit loses at low airflow. A cascade through the coil temperature holds the
    humidity a little more steadily.
-3. **Model predictive control (MPC) saves little energy against a well-scheduled PI:** 1.6 %
-   against a PI with set-back starting at 6:00, and nothing against one starting at 7:00.
+3. **Model predictive control (MPC) saves little energy against a well-scheduled PI:** 2.2 %
+   against a PI with set-back starting at 6:00, and 0.3 % against one starting at 7:00; a PI
+   starting at 7:30 uses 0.6 % less than the MPC.
    - The nominal MPC has a perfect weather forecast and exact model parameters; with 20 %
-     parameter errors its energy rises by 1.6 %, with a biased forecast by less than 1 %.
-   - With a time-of-use tariff (peak four times off-peak) it costs 7 % less than the set-back
+     parameter errors its energy rises by 1.0 %, and a biased forecast lowers it by 0.3 %.
+   - With a time-of-use tariff (peak four times off-peak) it costs 7.5 % less than the set-back
      PI, for 16 % more energy. This depends on the night-time efficiency of the unit, which the
      model bounds conservatively. An earlier "10 % saving" was traced to an unbounded
      efficiency at night and withdrawn.
@@ -43,7 +44,7 @@ All results are from simulation of one synthetic summer day, repeated (see Limit
      in closed loop with the sampled PI, while the coil stays in one regime; second order on
      trajectories that cross from a fully wet into a partially wet coil.
    - Energy, water and CO2 balances closed to round-off.
-   - 170 automated tests.
+   - 242 automated tests.
 
 ## Limits
 
@@ -67,9 +68,10 @@ Read in this order:
 2. [docs/results.md](docs/results.md): every study with its table and figure. The findings
    above come from here.
 3. [docs/verification.md](docs/verification.md): what is checked and how accurately.
-4. [docs/decisions.md](docs/decisions.md): the log of modelling and study decisions (D1-D34).
+4. [docs/decisions.md](docs/decisions.md): the log of modelling and study decisions (D1-D42).
    It records which ones were fixed before running a study, the corrections made after the
-   end-of-project check and after an external review, and the known limitations.
+   end-of-project check, after an external review and after the final audit, and the known
+   limitations.
 5. [docs/faq.md](docs/faq.md): questions a reviewer may ask, with short answers.
 6. [docs/specification.md](docs/specification.md): the full specification and its
    revisions.
@@ -135,7 +137,7 @@ src/roomsim/
                    humidity-aware fan control (direct and cascade), economic MPC,
                    ventilation strategies (scheduled, CO2 PI, staged, night flush)
 scripts/           one script per study, and reproduce.py to run them all
-tests/             170 tests; tolerance rules in tests/README.md and tests/criteria.py
+tests/             242 tests; tolerance rules in tests/README.md and tests/criteria.py
 docs/              model, results, verification, decisions, FAQ, specification, references
 figures/           figures and result tables written by the scripts
 ```

@@ -40,8 +40,15 @@ class VentilationFan:
         -------
         ndarray
             Electrical power, W.
+
+        Raises
+        ------
+        ValueError
+            If any flow is negative (the affinity law would give a negative power).
         """
         V = np.asarray(V, dtype=float)
+        if np.any(V < 0.0):
+            raise ValueError(f"V = {np.min(V)!r} m3/s is invalid; the flow must be >= 0")
         P: FloatArray = self.P_d * (V / self.V_d) ** 3
         return P
 

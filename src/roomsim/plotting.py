@@ -16,7 +16,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ._typing import FloatArray
+from ._typing import BoolArray, FloatArray
 from .inputs import DAY, HOUR
 from .results import SimResult
 
@@ -76,6 +76,26 @@ def _shade_occupancy(ax: Axes, r: SimResult, th: FloatArray, label: bool = True)
     for i, (a, b) in enumerate(zip(starts, ends, strict=True)):
         ax.axvspan(a, b, color=SHADE, zorder=0, lw=0,
                    label="occupied" if (i == 0 and label) else None)
+
+
+def _held(y: FloatArray) -> FloatArray:
+    """Return `y` with its last value replaced by the previous one, for post step plots.
+
+    The command of the last row acts after the end of the result; repeating the previous
+    command ends the step line at t_N without drawing the stale value.
+    """
+    return np.append(y[:-1], y[-2]) if len(y) > 1 else y
+
+
+def _peak_spans(peak: BoolArray) -> list[tuple[int, int]]:
+    """Return the runs of True in `peak` as (first index, index after the run) pairs.
+
+    A run reaching the end of the array ends at the last index.
+    """
+    d = np.diff(np.concatenate(([0], peak.astype(int), [0])))
+    last = len(peak) - 1
+    return [(int(a), min(int(b), last))
+            for a, b in zip(np.flatnonzero(d > 0), np.flatnonzero(d < 0), strict=True)]
 
 
 def _legend_top(ax: Axes, ncol: int) -> None:
@@ -271,7 +291,7 @@ def plot_controller_day(results: Mapping[str, SimResult], T_set: float, path: St
         axT.set_ylim(T_set - band - 0.2, T_set + band + 0.2)
         axT.set_ylabel("$T_a$ (°C)")
         axT.set_title(name, loc="left", fontsize=10, pad=4)
-        axS.step(th, r.require_unit().cmd[:, 0], where="post", color=color, lw=1.1)
+        axS.step(th, _held(r.require_unit().cmd[:, 0]), where="post", color=color, lw=1.1)
         axS.set_ylim(-0.05, 1.08)
         axS.set_yticks([0, 0.3, 1])
         axS.set_ylabel("s (-)")
@@ -359,7 +379,7 @@ def plot_humidity_day(results: Mapping[str, SimResult], RH_set: float, path: Str
         axH.set_title(name, loc="left", fontsize=10, pad=4)
         cmd = r.require_unit().cmd
         fan = np.where(cmd[:, 0] > 0, cmd[:, 1], np.nan)
-        axF.step(th, fan, where="post", color=color, lw=1.1)
+        axF.step(th, _held(fan), where="post", color=color, lw=1.1)
         axF.set_ylim(0.3, 1.05)
         axF.set_yticks([0.4, 1.0])
         axF.set_ylabel("fan (-)")
@@ -406,8 +426,7 @@ def plot_mpc_day(results: Mapping[str, SimResult], comfort: ComfortSchedule,
     peak = np.asarray(tariff(r0.t)) > tariff.offpeak
     for ax in (axT, axP):
         ax.set_axisbelow(True)
-        edges = np.flatnonzero(np.diff(peak.astype(int))) + 1
-        for a, b in zip(edges[::2], edges[1::2], strict=False):
+        for a, b in _peak_spans(peak):
             ax.axvspan(th[a], th[b], color=SHADE, lw=0, zorder=0)
     for (name, r), color in zip(results.items(), SERIES, strict=False):
         axT.plot(th, r.T_a, color=color, lw=1.3, label=name)
@@ -458,7 +477,7 @@ def plot_ventilation_day(results: Mapping[str, SimResult], co2_limit: float,
         axC.set_ylim(400, 1300)
         axC.set_ylabel("CO$_2$ (ppm)")
         axC.set_title(name, loc="left", fontsize=10, pad=4)
-        axV.step(th, 3600 * r.u[:, IDX_V_VENT], where="post", color=color, lw=1.1)
+        axV.step(th, _held(3600 * r.u[:, IDX_V_VENT]), where="post", color=color, lw=1.1)
         axV.set_ylim(-5, 115)
         axV.set_yticks([0, 50, 100])
         axV.set_ylabel("m$^3$/h")

@@ -6,9 +6,9 @@ Planner. Every Ts_pred (15 min) the controller solves, over a 24 h horizon with 
     s.t.  T_lo,j - eps_j  <=  T_a,j+1  <=  T_hi,j + eps_j        (comfort band, soft)
           0 <= u_j <= U_max,j,   eps_j >= 0
 
-where u_j is the sensible cooling (W), c_j the electrical energy per unit of sensible cooling
-forecast for that step (the unit's COP depends on the outdoor temperature), times the price
-relative to off-peak when a time-of-use tariff is given, and T_a,j+1 is
+where u_j is the sensible cooling net of the indoor-fan heat (W), c_j the electrical energy per
+unit of that cooling forecast for that step (the unit's COP depends on the outdoor temperature),
+times the price relative to off-peak when a time-of-use tariff is given, and T_a,j+1 is
 affine in u through the linear RC model, the forecast gains and the disturbance estimated by
 the Kalman filter. The comfort band is narrow while the office is occupied and wide otherwise,
 so the optimiser can let the room drift at night and pre-cool with the thermal mass when that is
@@ -42,8 +42,8 @@ from ..control_model import RCModel
 from ..estimation import DisturbanceKalman
 from ..inputs import Scenario, hour_of_day
 from ..plant import IDX_Y_RH, IDX_Y_TA
-from ..tariff import TimeOfUseTariff
-from .base import NO_VENTILATION, CompressorGuard, VentilationSchedule
+from ..tariff import TimeOfUseTariff, check_daily_window, in_daily_window
+from .base import NO_VENTILATION, CompressorGuard, VentilationSchedule, sampling_period
 from .pi_unit import PIUnitController, make_pi_controller
 
 HOUR = 3600.0
@@ -67,7 +67,7 @@ class PlanSolution(TypedDict):
     eps : ndarray
         Comfort-band violation per step, K.
     U_max : ndarray
-        Sensible capacity per step, W.
+        Net sensible capacity per step, W.
     cost : float
         Optimal objective value, equivalent kWh.
     """
@@ -87,7 +87,8 @@ class ComfortSchedule:
     """Comfort band by time of day, and the matching set point for a PI.
 
     Occupied: T_set +- band. Unoccupied: up to T_hi_unocc (set back). ``early_start_h`` moves the
-    PI set point back to T_set before occupancy (a fixed pre-cooling start).
+    PI set point back to T_set before occupancy (a fixed pre-cooling start). A period whose start
+    is later than its end crosses midnight.
 
     Attributes
     ----------
@@ -101,6 +102,12 @@ class ComfortSchedule:
         Start and end of occupancy, clock hours (h).
     early_start_h : float or None
         Clock hour (h) from which the PI set point is T_set; None uses ``start_h``.
+
+    Raises
+    ------
+    ValueError
+        If a clock hour is outside [0, 24], or start_h or early_start_h equals end_h (see
+        ``roomsim.tariff.check_daily_window``).
     """
 
     T_set: float = 25.0
@@ -111,10 +118,15 @@ class ComfortSchedule:
     end_h: float = 18.0
     early_start_h: float | None = None
 
+    def __post_init__(self) -> None:
+        """Validate the occupied period and the early start."""
+        check_daily_window("start_h", self.start_h, "end_h", self.end_h)
+        if self.early_start_h is not None:
+            check_daily_window("early_start_h", self.early_start_h, "end_h", self.end_h)
+
     def occupied(self, t: float | FloatArray) -> np.bool_ | BoolArray:
         """Return whether time t (s) lies in [start_h, end_h) of its day; elementwise."""
-        h = hour_of_day(t)
-        return (h >= self.start_h) & (h < self.end_h)
+        return in_daily_window(hour_of_day(t), self.start_h, self.end_h)
 
     def occupied_at_instant(self, t: float | FloatArray) -> np.bool_ | BoolArray:
         """Return whether instant t (s) is occupied on either side; elementwise.
@@ -148,7 +160,7 @@ class ComfortSchedule:
         """
         h = float(hour_of_day(t))
         start = self.start_h if self.early_start_h is None else self.early_start_h
-        return self.T_set if start <= h < self.end_h else self.T_hi_unocc
+        return self.T_set if in_daily_window(h, start, self.end_h) else self.T_hi_unocc
 
 
 class EconomicMPC:
@@ -205,6 +217,12 @@ class EconomicMPC:
         Last successful LP solution.
     solve_failures : int
         Number of LP solves that did not succeed.
+
+    Raises
+    ------
+    ValueError
+        If ``Ts_pred`` is not a positive integer multiple of ``Ts``, or the Kalman filter or
+        the inner PI assume a sampling period other than ``Ts``.
     """
 
     def __init__(self, model: RCModel, unit: ACUnit, forecast: Scenario,
@@ -220,6 +238,14 @@ class EconomicMPC:
         self.Ts, self.Ts_pred = Ts, Ts_pred
         self.N = int(round(horizon_h * HOUR / Ts_pred))
         self.n_pred = int(round(Ts_pred / Ts))
+        if self.n_pred < 1 or abs(self.n_pred * Ts - Ts_pred) > 1e-9 * Ts_pred:
+            raise ValueError(f"Ts_pred = {Ts_pred!r} s is invalid; it must be a positive integer "
+                             f"multiple of Ts = {Ts!r} s")
+        for part, Ts_part in (("kalman", sampling_period(kalman)),
+                              ("inner", sampling_period(inner))):
+            if Ts_part is not None and abs(Ts_part - Ts) > 1e-9 * Ts:
+                raise ValueError(f"{part}.Ts = {Ts_part!r} s does not match the MPC's sampling "
+                                 f"period Ts = {Ts!r} s; they must be equal")
         self.rho, self.lam, self.margin, self.W_ref = rho, lam, margin, W_ref
         self.tariff = tariff
         self.kf = kalman or DisturbanceKalman(model, Ts)
@@ -243,7 +269,10 @@ class EconomicMPC:
 
     # -- unit characteristics as the controller sees them -----------------------------------------
     def sensible_capacity(self, T_o: float) -> float:
-        """Return the sensible cooling at full speed and full fan, at the comfort set point.
+        """Return the net sensible cooling at full speed and full fan, at the comfort set point.
+
+        Net of the indoor-fan heat, which stays in the room: the same quantity as the cooling
+        fed to the Kalman filter, the input Q_c of the RC model.
 
         Parameters
         ----------
@@ -253,12 +282,13 @@ class EconomicMPC:
         Returns
         -------
         float
-            Sensible cooling, W.
+            Net sensible cooling Q_sens - P_fan_in, W.
         """
-        return self.unit.operate(1.0, 1.0, self.comfort.T_set, self.W_ref, T_o).Q_sens
+        st = self.unit.operate(1.0, 1.0, self.comfort.T_set, self.W_ref, T_o)
+        return st.Q_sens - st.P_fan_in
 
     def energy_per_cooling(self, T_o: float) -> float:
-        """Return the electrical energy per unit of sensible cooling at half speed, -.
+        """Return the electrical energy per unit of net sensible cooling at half speed, -.
 
         Parameters
         ----------
@@ -268,10 +298,10 @@ class EconomicMPC:
         Returns
         -------
         float
-            P_el / Q_sens, -.
+            P_el / (Q_sens - P_fan_in), -.
         """
         st = self.unit.operate(0.5, 1.0, self.comfort.T_set, self.W_ref, T_o)
-        return st.P_el / st.Q_sens
+        return st.P_el / (st.Q_sens - st.P_fan_in)
 
     def planning_band(self, t: float | FloatArray) -> tuple[FloatArray, FloatArray]:
         """Return the comfort band narrowed by ``margin`` while occupied, for the PI ripple.
@@ -294,7 +324,9 @@ class EconomicMPC:
     def plan(self, t: float, z: FloatArray) -> FloatArray:
         """Solve the planning LP from the estimated state at time t.
 
-        On solver failure ``solve_failures`` is incremented and the current move is repeated.
+        On solver failure ``solve_failures`` is incremented and the last successful plan is
+        returned shifted to the current step (padded with its last move); without one, the
+        current move is repeated.
 
         Parameters
         ----------
@@ -347,11 +379,26 @@ class EconomicMPC:
         res = linprog(cost, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method="highs")
         if res.status != 0:
             self.solve_failures += 1
-            return np.full(N, self.u_plan)
+            j_now = self._plan_index(t)
+            if j_now is None or self.last_solution is None:
+                return np.full(N, self.u_plan)
+            old = self.last_solution["u"][j_now:]
+            return np.concatenate([old, np.full(N - len(old), old[-1])])
         u: FloatArray = res.x[:N]
         self.last_solution = {"t": t_start, "u": u, "T": f + S @ u, "lo": lo, "hi": hi,
                               "eps": res.x[N:2 * N], "U_max": U_max, "cost": res.fun}
         return u
+
+    def _plan_index(self, t: float) -> int | None:
+        """Return the step of the last successful plan that starts at time t (s).
+
+        0 right after a successful solve, k after k failed solves; None without a plan or when
+        t lies beyond its horizon.
+        """
+        if self.last_solution is None:
+            return None
+        j = int(round((t - float(self.last_solution["t"][0])) / self.Ts_pred))
+        return j if 0 <= j < len(self.last_solution["T"]) else None
 
     # -- controller interface ----------------------------------------------------------------------
     def step(self, t: float, y: FloatArray) -> FloatArray:
@@ -381,10 +428,12 @@ class EconomicMPC:
         if self.k % self.n_pred == 0:
             u = self.plan(t, self.kf.state)
             self.u_plan = float(u[0])
-            if self.last_solution is not None:
-                # planned temperature at the end of the move, kept inside the band in force now
-                lo, hi = self.planning_band(t)
-                self.T_ref = float(np.clip(self.last_solution["T"][0], lo, hi))
+            j = self._plan_index(t)
+            if j is not None and self.last_solution is not None:
+                # planned temperature at the end of the current move, kept inside the band that
+                # applies at that instant (the band the LP used for it)
+                lo, hi = self.planning_band(t + self.Ts_pred)
+                self.T_ref = float(np.clip(self.last_solution["T"][j], lo, hi))
         self.k += 1
 
         cmd = self.inner.step(t, y)

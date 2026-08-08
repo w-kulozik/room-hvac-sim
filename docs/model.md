@@ -65,10 +65,10 @@ Runge-Kutta stage.
 | Sensible / latent split | exact for the enthalpy definition: Q_sens + Q_lat = ṁ Δh to round-off |
 | Capacity | 2.5 kW at rating; +4 % per K of evaporating temperature and −1.6 % per K of outdoor temperature at fixed evaporating temperature, both fitted so that the unit, coil included, has the slopes of the EnergyPlus example curve WindACCoolCapFT at rating: +3.6 % per K of entering wet bulb and −1.1 % per K of outdoor temperature at fixed entering air (D30). Less airflow lowers T_evap and so the capacity |
 | Cycle | Carnot fraction with a finite-UA condenser, closed form, calibrated to the rated net EER; condensing temperature at least 15 K above evaporating (head-pressure control) |
-| Frost protection | evaporating temperature held at ≥ 0.5 °C, with the capacity the coil takes at that temperature |
+| Frost protection | evaporating temperature held at ≥ 0.5 °C, with the capacity the coil takes at that temperature. Active whenever the coil cannot take the compressor capacity at 0.5 °C: low airflow, cool or dry return air, cold outdoor air, also at full fan. The compressor then runs at the effective speed s_eff = s Q_coil(0.5 °C) / Q_comp(s, 0.5 °C) and the cycle efficiency is that of s_eff; below the minimum speed it cycles at 0.3 with duty s_eff / 0.3, reported as the cycle average (D40) |
 | Indoor fan | 25 W at full speed: 5 W independent of speed plus 20 W following the cube of the speed (D31) |
-| Start-up | capacity ramps with a 60 s time constant while the compressor already draws the power of the steady operating point |
-| Coil water | condensate wets the coil (0.25 kg) before it drains; re-evaporates with the fan on and the compressor off |
+| Start-up | capacity ramps with a 60 s time constant while the compressor already draws the power of the steady operating point; the reported COP is that of the steady (requested) operating point |
+| Coil water | condensate wets the coil (0.25 kg) before it drains; re-evaporates with the fan on and the compressor off. With the compressor on the held water changes only through condensation: on a coil that is dry under the current conditions it is kept, not evaporated, until the next fan-only period (at most 0.25 kg; D42). In fan-only operation the surface temperature and the wetted fraction go continuously from the wet-bulb temperature and 1 to the return-air temperature and 0 as the film evaporates |
 
 NTU is the number of transfer units of the coil, UA a heat-exchanger conductance, and the
 coefficient of performance (COP) the cooling per unit of compressor power.

@@ -13,7 +13,7 @@ was physically inconsistent, it was revised; each revision is marked **[rev]** w
 | `plant.py` | `rhs(t, x, u, d, p)` returning dx/dt (continuous plant) and `fluxes(...)` with every term |
 | `integrators.py` | fixed-step explicit Euler and classical fourth-order Runge-Kutta (RK4) |
 | `simulate.py` | fixed-step loop coordinating plant, controller and logging |
-| `controllers/` | **discrete** controllers executed every Δt_c, output held (zero-order hold) |
+| `controllers/` | **discrete** controllers executed every Δt_c, output held (zero-order hold); a controller whose discrete elements assume a sampling period Ts must be run with Δt_c = Ts, which the simulator checks **[rev]** |
 | `tests/` | verification of section 5 |
 
 Modules added later (air-conditioning unit, controllers, estimation, ventilation fan) are listed
@@ -66,7 +66,8 @@ and coating ([references.md](references.md)):
 - The layer is at the mass temperature T_m, so a warming wall releases moisture.
 - The heat of sorption is neglected (order 10 W for daily cycles).
 - Can be switched off with `RoomParams(moisture_buffer=False)`, which recovers the original
-  model.
+  model. **[rev]** A buffer that stores no water (C_b = 0, from a zero density, depth or slope)
+  also exchanges none (G_b = 0), and G_b → 0 in the limits β → 0 (h_i = 0) and δ → 0.
 
 ## 2b. CO2 balance
 
@@ -99,10 +100,11 @@ the whole unit, net of the indoor fan heat; SHR, sensible heat ratio.
 | Split | Q_sens = ṁ(c_pa + c_pv W_out)(T_in − T_out), Q_lat = ṁ_lat(h_fg0 + c_pv T_in): their sum equals ṁ Δh exactly |
 | Outlet | brought to saturation at constant enthalpy if the mixing line would cross it |
 | Capacity **[rev]** | s × 2.5 kW × [1 + 0.040 (T_evap − T_evap,rated)] × [1 − 0.016 (T_o − 35 °C)], solved with the coil for T_evap (D30) |
-| Frost protection | evaporating temperature held at ≥ 0.5 °C; the capacity is what the coil takes at that temperature |
+| Frost protection **[rev]** | evaporating temperature held at ≥ 0.5 °C; the capacity is what the coil takes at that temperature. The compressor then runs at s_eff = s Q_coil(T_evap,min)/Q_comp(s, T_evap,min) and the cycle efficiency is evaluated at s_eff; for s_eff < s_min it cycles at s_min with duty s_eff/s_min and the cycle average is returned (D40) |
 | Cycle | COP = η(s) T_evap/(T_cond − T_evap) with absolute temperatures, T_cond = max(T_o + Q_cond/UA_cond, T_evap + 15 K) with Q_cond = Q_coil (1 + 1/COP), closed form; η calibrated to a net EER of 3.5 (fans included, indoor fan heat subtracted from the capacity) at 35 °C / 27 °C / W = 0.0114 **[rev]** |
 | Indoor fan **[rev]** | 5 W + 20 W × f³ (D31) |
 | Start-up | delivered capacity × (1 − e^(−t_on/60 s)); compressor power that of the steady operating point at the commanded speed. Choice of 60 s: decision D9 in [decisions.md](decisions.md) |
+| Coil water **[rev]** | held water M_c ≤ 0.25 kg; with the compressor on it changes only through condensation (kept, not evaporated, on a dry coil); in fan-only operation it re-evaporates at constant air enthalpy, and the surface temperature and wetted fraction follow the evaporation weight of the film to the dry values (D42) |
 
 At rating conditions: SHR 0.73, mean coil surface 13.4 °C, supply 15.1 °C. Lower fan speed gives
 a colder coil, more dehumidification, less capacity and a lower COP; at 30 % speed under rating
@@ -157,7 +159,9 @@ Room 5 × 4 × 2.7 m, office for two people.
   air mass does and which overstates the afternoon latent load. The original behaviour remains
   available with `SummerScenario(constant_W=False)`.
 - Sun on the window: half-sine between 6 h and 18 h, peak 500 W/m².
-- Occupancy: 2 people from 8 h to 18 h.
+- Occupancy: 2 people from 8 h to 18 h. **[rev]** Occupancy intervals, ventilation and comfort
+  schedules and tariff peak periods are daily windows [start, end); a window with start > end
+  crosses midnight (for example 22 h to 6 h), and start = end is rejected as ambiguous.
 
 **Initial state and warm-up [rev]:** the mass time constant is about 3.1 days, as long as the
 simulated period, so the result depends on the initial state. The reported run is preceded by
@@ -170,7 +174,9 @@ The system is stiff. RK4 with 60 s is accurate; explicit Euler is stable for ste
 2/|λ_max|, checked numerically from the Jacobian. **[rev]** The fastest mode is the air-buffer
 moisture exchange, not the air temperature, and it stiffens with temperature because the
 buffer flux scales with p_ws(T_m): the Euler limit is ≈ 790 s at 26 °C and ≈ 380 s at 48 °C
-(RK4: ≈ 1 100 s and ≈ 530 s).
+(RK4: ≈ 1 100 s and ≈ 530 s). **[rev]** The simulator stops with an error when the state becomes
+non-finite or unphysical (negative W or C, or negative φ_b with an active buffer), and the
+message gives the stability limit of the integrator estimated at the initial state.
 
 ## 5. Verification
 

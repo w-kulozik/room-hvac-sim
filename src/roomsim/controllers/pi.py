@@ -111,14 +111,24 @@ def room_pi_tuning(p: RoomParams, unit: ACUnit, Ts: float = 60.0, tau_c: float =
                    T_o: float = 32.0) -> tuple[float, float]:
     """Return PI gains for air-temperature control through the compressor demand.
 
-    Process seen by the controller: demand in [0, 1] -> cooling capacity -> T_a. With the mass
-    node held fixed this is first order with tau = tau_air and gain
-    capacity / (H_am + H_ao + H_inf).
+    Process seen by the controller: demand in [0, 1] -> cooling -> T_a. With the mass node held
+    fixed this is first order with tau = tau_air and gain Q_d / (H_am + H_ao + H_inf), where
+    Q_d is the cooling per unit of demand. The SIMC rules are applied with Q_d = the total
+    compressor capacity at full speed and the rated evaporating temperature (2620 W at 32 degC
+    outdoors). This is a nominal value: T_a responds only to the net sensible cooling, and the
+    unit is strongly nonlinear in the demand v. Below s_min (sigma-delta cycling, where the PI
+    spends most of the time in the standard runs) the unit delivers on average about 3250 W per
+    unit of demand; above s_min the coil is wet and the incremental sensible gain is
+    700-1000 W. Measured in set-point steps of 0.5 K, the closed-loop 63 % time is 600-1140 s
+    at low load (design 960 s, i.e. tau_c + theta plus the zero-order hold) and 2100-2340 s in
+    the modulating range. Taking Q_d from the low-load sensible gain instead hardly changes
+    the low-load response, because the sigma-delta modulation dominates it, and slows the
+    modulating range further.
+
     The mass node adds a slow mode that the integral action handles. Dead time: half a sample
     for the zero-order hold; the sensor is read at the sampling instant without further delay,
-    so theta = Ts/2.
-    tau_c = 900 s trades speed for robustness to the unmodelled mass dynamics and the coil
-    nonlinearity.
+    so theta = Ts/2. tau_c = 900 s trades speed for robustness to the unmodelled mass dynamics
+    and the coil nonlinearity.
 
     Parameters
     ----------

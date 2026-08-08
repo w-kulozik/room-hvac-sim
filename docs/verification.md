@@ -2,10 +2,11 @@
 
 ## Checks
 
-All checks run in `pytest` (170 tests, about three minutes on a laptop). The code and documents
+All checks run in `pytest` (242 tests, about three minutes on a laptop). The code and documents
 were checked again at the end of the project; the defects found and their fixes are in
 [decisions.md](decisions.md) (D20-D22). The unit model was revised after an external review
-(D29-D32); the tests added then are marked "(D29-D32)" below.
+(D29-D32); the tests added then are marked "(D29-D32)" below. A final audit corrected further
+defects and added robustness checks (D35-D42); the tests added then are marked "(D35-D42)".
 
 RK4 is the classical fourth-order Runge-Kutta method, PI a proportional-integral controller and
 MPC model-predictive control. Convergence orders are fitted by least squares over a sequence of
@@ -42,6 +43,20 @@ halved time steps.
 | Control model vs plant with the unit off, one day | < 10⁻⁴ K (measured 2·10⁻⁵ K) |
 | Kalman filter: mass temperature and unknown 250 W heat input after 6 days | 10⁻³ K, 0.1 % |
 | MPC plan: feasible, inside the planning band, no cooling while the band is wide | always |
+| MPC set point clipped with the band at the end of the first prediction step: solve at 18:00 (end unoccupied) and at 7:45 (end occupied) (D35-D42) | 27.0 °C kept; clipped to 25.4 °C |
+| MPC capacity and cost per unit of cooling vs the net cooling Q_sens − P_fan_in fed to the Kalman filter (D35-D42) | 10⁻¹² relative |
+| MPC after a failed LP solve: set point and move taken from the previous plan shifted by one step (D35-D42) | exact |
+| Compressor starts in a window that begins inside a running cycle; fan travel counts only steps between consecutive running samples, NaN without running time (D35-D42) | no start counted; exact on constructed records |
+| Frost-limited unit: COP at the effective speed s_eff (20 °C, 10 % RH return air, −10 °C outdoors, s = 1, 40 % fan: s_eff = 0.37); cycling at s_min below it (D35-D42) | 10⁻¹² relative to the formula (COP 7.23 against 9.05 at the commanded speed) |
+| Frost-limited unit: power and COP at frost onset and where s_eff crosses s_min (D35-D42) | jumps 7·10⁻⁶ W and 5·10⁻⁷; 1·10⁻⁶ W and 1·10⁻⁸ |
+| Fan-only coil: surface temperature and wetted fraction as the film vanishes (D35-D42) | continuous, (T_in, 0) on a dry coil |
+| Divergence detection: RK4 with Δt = 1 200 s on the summer scenario; Δt = 900 s still runs (D35-D42) | stops at t = 31 200 s, limit reported ≈ 1 094 s; runs |
+| Zero-capacity moisture buffer with φ_b = 0.9, one day (D35-D42) | same W as with the buffer off; water residual 0 kg |
+| Periodic state with the buffer off (φ_b has no dynamics), guesses φ_b = 0 and 0.5 (D35-D42) | φ_b kept; other states identical, periodic to 3·10⁻¹⁰; open mass integrator raises a clear error |
+| Input validation: negative room parameters, negative ventilation flow, RH_o outside [0, 1], sunset before sunrise, empty or out-of-range daily windows, window outside the run, no occupied rows (D35-D42) | ValueError, or NaN with a warning for the occupied means |
+| Daily windows crossing midnight (22-6 h): occupancy, ventilation schedule, comfort schedule, tariff peak (D35-D42) | active at 23 h and 2 h, not at 12 h |
+| Controller sampling period vs `dt_ctrl` (seven controllers at 30 s against their 60 s), and parts of one controller with different periods (D35-D42) | ValueError |
+| Cached exact discretisation of the control model is read-only (D35-D42) | write raises |
 
 COP is the coefficient of performance of the compressor.
 
@@ -77,7 +92,10 @@ loop"; the test behind it used a constant command (decision D8).
 
 **Stiffness.** The fastest mode is the air-buffer moisture exchange, and it stiffens with
 temperature because the buffer flux scales with p_ws(T_m). The explicit-Euler stability limit is
-≈ 790 s at 26 °C and ≈ 380 s at 48 °C; RK4 at 60 s has ample margin.
+≈ 790 s at 26 °C and ≈ 380 s at 48 °C; the RK4 limit is ≈ 1 100 s at 26 °C, so RK4 at 60 s has
+ample margin. With a step above the limit the simulator stops as soon as the state becomes
+non-finite or unphysical (negative humidity ratio, CO2 or active-buffer φ_b) and reports the
+limit estimated at the initial state, instead of returning diverged values.
 
 **What the checks do not cover.** They verify that the equations are solved correctly. They do
 not validate the equations against measurements of a real room or unit; see the known

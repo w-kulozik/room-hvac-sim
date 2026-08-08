@@ -7,7 +7,12 @@ changing a primary parameter with ``dataclasses.replace`` keeps everything consi
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+
+# Parameters that are capacities, conductances or flows and therefore must not be negative
+_NON_NEGATIVE = ("h_i", "ach", "buffer_area", "buffer_density", "buffer_depth", "buffer_slope",
+                 "buffer_permeability")
 
 
 @dataclass(frozen=True)
@@ -64,6 +69,11 @@ class RoomParams:
         Vapour permeability of the buffer material, kg/(m s Pa).
     T_ref : float
         Reference temperature for the Lewis analogy, degC.
+
+    Raises
+    ------
+    ValueError
+        If h_i, ach or a buffer parameter is negative.
     """
 
     # Geometry and air properties
@@ -103,6 +113,13 @@ class RoomParams:
     buffer_slope: float = 0.01               # sorption-isotherm slope du/dphi, kg water/kg material
     buffer_permeability: float = 2.5e-11     # vapour permeability, kg/(m s Pa) (mu ~ 8)
     T_ref: float = 25.0                      # reference temperature for the Lewis analogy, degC
+
+    def __post_init__(self) -> None:
+        """Reject negative capacities, conductances and flows."""
+        for name in _NON_NEGATIVE:
+            value = getattr(self, name)
+            if not value >= 0.0:
+                raise ValueError(f"{name} = {value!r} is invalid; it must be >= 0")
 
     # ---- derived quantities -------------------------------------------------------
     @property
@@ -162,8 +179,8 @@ class RoomParams:
 
     @property
     def tau_moisture(self) -> float:
-        """Moisture time constant of the air alone (no buffering), 3600/n, s."""
-        return 3600.0 / self.ach
+        """Moisture time constant of the air alone (no buffering), 3600/n, s; inf if ach = 0."""
+        return 3600.0 / self.ach if self.ach > 0.0 else math.inf
 
     @property
     def buffer_capacity(self) -> float:
@@ -186,8 +203,11 @@ class RoomParams:
         """Air <-> buffer vapour conductance, kg/(s Pa).
 
         Surface resistance in series with diffusion through half the penetration depth.
+        Zero when the buffer is off or stores no water (zero capacity: no storage, no
+        exchange), and in the limits beta -> 0 (h_i = 0) and permeability -> 0.
         """
-        if not self.moisture_buffer:
+        if (self.buffer_capacity == 0.0 or self.beta_surface == 0.0
+                or self.buffer_permeability == 0.0):
             return 0.0
         r_surface = 1.0 / self.beta_surface
         r_material = 0.5 * self.buffer_depth / self.buffer_permeability

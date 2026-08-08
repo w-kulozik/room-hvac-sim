@@ -96,7 +96,8 @@ class RCModel:
     def discrete(self, Ts: float, V_vent: float = 0.0) -> tuple[FloatArray, FloatArray, FloatArray]:
         """Return the zero-order-hold discretisation (Ad, Bd, Ed) for the sampling period Ts.
 
-        Results are cached per (model, Ts, V_vent).
+        Results are cached per (model, Ts, V_vent) and shared by every caller, so the arrays
+        are read-only; copy them before modifying.
 
         Parameters
         ----------
@@ -151,4 +152,7 @@ def _discretise(model: RCModel, Ts: float,
     M[:n, n] = B
     M[:n, n + 1:] = E
     Phi: FloatArray = expm(M * Ts)
-    return Phi[:n, :n], Phi[:n, n].copy(), Phi[:n, n + 1:].copy()
+    Ad, Bd, Ed = Phi[:n, :n], Phi[:n, n].copy(), Phi[:n, n + 1:].copy()
+    for arr in (Ad, Bd, Ed):
+        arr.setflags(write=False)      # cached and shared: callers must not modify them
+    return Ad, Bd, Ed

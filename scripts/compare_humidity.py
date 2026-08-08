@@ -28,7 +28,7 @@ from roomsim.controllers import (
     make_pi_controller,
 )
 from roomsim.inputs import DAY, SummerScenario
-from roomsim.metrics import compute
+from roomsim.metrics import compute, fan_travel_per_h
 from roomsim.params import RoomParams
 from roomsim.plant import equilibrium_state
 from roomsim.plotting import apply_style, plot_humidity_day
@@ -41,21 +41,18 @@ WARMUP_DAYS, DAYS = 3, 3
 
 
 def rh_std_occ(r: SimResult) -> float:
-    """Return the standard deviation of the indoor RH over the occupied grid points, %."""
-    occ = np.asarray(r.d.n_occ) > 0
-    return float((100 * r.RH[occ]).std())
+    """Return the standard deviation of the indoor RH over the occupied rows, %.
 
-
-def fan_travel_per_h(r: SimResult) -> float:
-    """Return the total variation of the fan command per running hour, 1/h.
-
-    Only grid points with the compressor running are counted; the value indicates actuator
-    wear and noise. `r` must have a unit record.
+    Row k covers [t_k, t_k + dt), so the last row is dropped, as in `compute`.
     """
-    cmd = r.require_unit().cmd
-    run = cmd[:, 0] > 0
-    f = cmd[run, 1]
-    return float(np.abs(np.diff(f)).sum() / (run.sum() * r.dt / 3600.0))
+    occ = np.asarray(r.d.n_occ)[:-1] > 0
+    return float((100 * r.RH[:-1][occ]).std())
+
+
+def rh_max_occ(r: SimResult) -> float:
+    """Return the highest indoor RH over the occupied rows (last row dropped), %."""
+    occ = np.asarray(r.d.n_occ)[:-1] > 0
+    return float(100 * r.RH[:-1][occ].max())
 
 
 def main() -> None:
@@ -99,9 +96,8 @@ def main() -> None:
     for uname, unit in units.items():
         for cname in ("H1 fan RH-PI", "H2 cascade"):
             r = results[cname] if uname == "nominal" else run(builders[cname], unit)
-            occ = np.asarray(r.d.n_occ) > 0
             rob.append(f"| {uname} | {cname} | {compute(r, T_SET).RH_mean_occ:.1f} | "
-                       f"{rh_std_occ(r):.2f} | {100 * r.RH[occ].max():.1f} | "
+                       f"{rh_std_occ(r):.2f} | {rh_max_occ(r):.1f} | "
                        f"{fan_travel_per_h(r):.2f} |")
     robustness = "\n".join(rob)
 
