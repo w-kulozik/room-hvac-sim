@@ -762,6 +762,152 @@ regenerated. No parameter was changed.
   compressor is off, and no controller in the studies reads the thermistor in fan-only
   operation.
 
+## Seasonal study with measured weather
+
+Everything in D43-D48 was written down and committed before any seasonal run or any evaluation
+of the model's seasonal efficiency. Outcomes are recorded afterwards in a separate entry; no
+parameter fixed here is changed after seeing them.
+
+### D43. Weather data
+- **Timing:** a priori.
+- **Source:** typical meteorological years (TMY) from PVGIS 5.3 of the European Commission's
+  Joint Research Centre, built by the ISO 15927-4 procedure from hourly data of 2005-2023.
+  Irradiance from PVGIS-SARAH3 (satellite), the other variables from the ERA5 reanalysis.
+  Horizon shading from the terrain model is included.
+- **Sites:**
+  - Munich (48.137 N, 11.575 E, 524 m): moderate summer, May-September mean 15.9 °C, 208 h
+    above 25 °C, maximum 33.1 °C.
+  - Madrid (40.417 N, 3.704 W, 665 m): hot, dry summer, May-September mean 23.4 °C, 1 450 h
+    above 25 °C, maximum 40.1 °C.
+- **Licence:** © European Union, reused under the Commission's reuse policy (CC BY 4.0). The
+  files in `data/weather/` keep the hourly rows unchanged but only the columns used (time,
+  T2m, RH, G(h), Gb(n), Gd(h), SP), converted from JSON to CSV with the location and the
+  months selected in a header; `data/weather/README.md` says so.
+- **Time stamps:** the JSON labels the time column UTC. Temperature, humidity and pressure are
+  taken at the stamped hour; irradiance at the stamped hour plus the `irradiance_time_offset`
+  given in the file (0.180 h in Munich, 0.171 h in Madrid), as the PVGIS documentation
+  instructs for solar geometry. Checked while designing: rebuilding the horizontal global
+  irradiance from the beam and diffuse values with the solar geometry of D44 leaves an RMS
+  residual of 1.9 W/m² (Munich) and 1.8 W/m² (Madrid) over hours above 50 W/m²; without the
+  offset 8.3 and 12.4 W/m². This fixes the time convention; it becomes a test.
+- **Local time:** the room's schedules run on local clock time. The cooling season lies inside
+  daylight saving time, so local time is UTC + 2 h in both cities throughout.
+- **Between the hourly values:** linear interpolation, applied to the outdoor temperature, the
+  vapour pressure and the irradiance on the window (D44), each at its own time stamps. The year
+  is periodic (31 December runs into 1 January); the months of a TMY come from different
+  years, and PVGIS joins them.
+- **Humidity:** the outdoor vapour pressure is taken from the data (RH times the saturation
+  pressure at T2m) and converted to a humidity ratio at the model's standard pressure. This
+  keeps the outdoor dew point, which is what decides condensation on the coil. The station is
+  about 6 % below standard pressure; converting at the station pressure would raise the
+  humidity ratio by about 6 % at the same dew point, inconsistently with the room model at
+  standard pressure.
+
+### D44. Sun on the window
+- **Timing:** a priori.
+- **Window:** vertical, facing due south, unshaded; area and g-value as in `RoomParams`
+  (3 m², 0.6), without the fall of transmittance at large angles of incidence. The synthetic
+  day used 500 W/m² of peak irradiance on the window; a vertical south window in Munich
+  receives about that at noon in July.
+- **Solar position:** declination and equation of time from Spencer's Fourier series in
+  fractional-year form, hour angle from UTC, the longitude and the equation of time.
+- **Transposition:** isotropic sky:
+  G_win = Gb(n) max(cos θ, 0) + Gd(h) (1 + cos β)/2 + ρ G(h) (1 − cos β)/2,
+  with θ the angle of incidence, β = 90° and ground reflectance ρ = 0.2. The isotropic model
+  underestimates the diffuse light from the circumsolar region, so the sun on the window is
+  on the low side.
+- **Check:** the solar position is compared with a second, independent formulation (the
+  low-precision solar coordinates of the astronomical almanac). The two agree to 0.3-0.5° in
+  declination and 0.9 min in the equation of time; the difference is the phase of the leap
+  year cycle, which a typical year does not define.
+
+### D45. Season, schedules and controllers
+- **Timing:** a priori.
+- **Season:** 1 May to 30 September (153 days), after 7 warm-up days (24-30 April) that are
+  discarded. The run starts from the equilibrium state of `equilibrium_state(22, 22, W_o)`.
+- **Occupancy and ventilation:** as in the controller studies, two people from 8 to 18 h and
+  the fixed ventilation schedule, on every day of the season. Weekends are not modelled; this
+  overstates the season's demand of an office and does not affect the comparison between
+  controllers.
+- **Set point:** the set-back schedule of the MPC study (D33): 25 °C from 6 to 18 h, 28 °C
+  otherwise, for every controller. The on/off thermostat is given the same schedule (it took
+  a constant set point until now).
+- **Controllers:** on/off thermostat; PI with sigma-delta low-load handling (C); the same PI
+  with the H2 cascade on the indoor fan (RH set point 55 %). The MPC is not run: its forecast
+  model would have to be extended to measured weather, which is a separate piece of work.
+- **No heating:** the unit only cools. Hours with the room below the comfort band while
+  occupied are reported, not corrected.
+- **Indicators per city and controller:** electrical energy of the unit; net cooling delivered
+  (sensible plus latent, minus the indoor-fan heat, integrated with the state like the
+  electrical energy); seasonal EER in use (the ratio of the two); compressor running hours and
+  starts; the share of running time at minimum speed; degree-hours above and below the band
+  while occupied; mean occupied RH and occupied hours above 60 % RH.
+- **Runtime:** about 1 s of computing time per simulated day per run, measured; six runs of
+  160 days are run in parallel processes.
+
+### D46. Seasonal energy efficiency ratio (SEER)
+- **Timing:** a priori.
+- **Method:** Commission Regulation (EU) No 206/2012, Annex II, with the calculation in the
+  Commission communication 2012/C 172/01, section 3.1, for variable-capacity units:
+  - bin hours of the reference cooling season, 17-40 °C, 2 602 h in total;
+  - part load Pc(Tj) = Pdesignc (Tj − 16)/(35 − 16);
+  - anchor points at 35, 30, 25 and 20 °C. Where the unit can deliver the part load within
+    ± 10 %, EERbin is the EER at that load. Where the part load is below the minimum capacity,
+    EERbin = EERd (1 − Cdc (1 − Pc/Pdc)) at the minimum capacity, with Cdc = 0.25 (the
+    default value);
+  - linear interpolation between the anchor points, constant beyond them;
+  - SEERon = Σ hj Pc(Tj) / Σ hj Pc(Tj)/EERbin(Tj);
+  - SEER = QC / QCE, with QC = Pdesignc × 350 h and QCE = QC/SEERon + 221 h PTO + 2 142 h PSB
+    + 0 h POFF + 2 672 h PCK (a unit that also heats).
+- **Check on the published data, done while designing:** with the declared points of the
+  reference unit (D30, [references.md](references.md)), Pdesignc = 2.50 kW and the low-power
+  modes of its data book (PTO 6 W, PSB 1 W, POFF 1 W; no crankcase heater power listed, so
+  PCK = 0), the method gives SEERon = 8.96 and SEER = 8.654, against the published 8.65, and an
+  annual consumption of 101 kWh, as published. The implementation becomes a test with this
+  case.
+- **The model's SEER:** the same method applied to the model, with its points computed at the
+  rating indoor state (27 °C, 19 °C wet bulb) and full indoor fan, as in the rated comparison:
+  - Pdesignc = the model's net capacity at 35 °C;
+  - at each anchor temperature, the compressor speed that delivers Pc(Tj), or the minimum
+    speed if Pc(Tj) is below the minimum capacity;
+  - the model has no standby electronics or crankcase heater, so the low-power modes of the
+    reference unit are used (6, 1, 1, 0 W).
+- **Local bins:** SEERon is also computed with the bin hours of each city's typical year
+  (hours rounded to the nearest degree, 17-40 °C), for the published data and for the model.
+  This separates the effect of the climate on the rating from the effects that only a dynamic
+  simulation shows.
+
+### D47. Expectations stated beforehand
+- **Timing:** a priori.
+- **E1, the model's SEER:** between 4.0 and 5.0 (estimate 4.5 from the model's part-load EERs
+  in the rated comparison, 3.45-5.08), roughly half the published 8.65. The model's EER rises
+  much less at part load than the real unit's (D30-D32, Limits); the SEER gap is the
+  part-load gap, not new information.
+- **E2, local bins:** with the published data, SEERon is higher with Munich's bins and lower
+  with Madrid's than with the reference season. For the model the same order, with smaller
+  differences, because its EER varies less with load.
+- **E3, in use against the rating:** the seasonal EER in use is 10-35 % below the model's own
+  SEERon with the local bins. Reasons: the room is held at 25 °C, not 27 °C, which lowers the
+  evaporating temperature; the solar and internal gains do not follow the outdoor temperature,
+  as the bin method assumes; and the oversized unit cycles at minimum speed for much of the
+  season.
+- **E4, controllers:** in both cities the PI uses less electricity than the on/off thermostat,
+  by 15-35 %; the H2 cascade uses 3-15 % more than the PI and keeps the occupied RH lower.
+- **E5, cities:** Madrid needs more than 1.5 times Munich's electricity with every controller.
+  Low confidence on one more: the seasonal EER in use is higher in Madrid, because more of the
+  running time is above minimum speed.
+
+### D48. Supporting changes
+- **Timing:** a priori.
+- `OnOffThermostat` accepts a set-point schedule, as the PI already does; with a constant set
+  point it behaves as before.
+- The unit record gains the integrated net cooling (D45). It is an extra integral appended to
+  the state; the existing states, and therefore every published number, must stay bit for bit
+  the same, which `reproduce.py --check` verifies.
+- New modules `solar.py` (solar position and transposition), `weather.py` (the PVGIS reader
+  and the weather scenario) and `seasonal.py` (bin method); new script
+  `scripts/compare_season.py`, added to `reproduce.py`.
+
 ## Structure
 
 ### D19. Refactor of the simulation interface
