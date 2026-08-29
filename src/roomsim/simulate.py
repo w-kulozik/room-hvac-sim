@@ -14,8 +14,8 @@ closed loop only first-order accurate, because the coil output depends on the ai
 
 Integrated state vector: [room state (5), water on the coil (with a unit), cumulative integrals].
 The cumulative integrals (boundary heat, room water, CO2, external water, electrical energy,
-drained condensate) use the same method as the state, so the balances in ``SimResult`` reflect
-exactly what the integrator did.
+drained condensate, net cooling delivered) use the same method as the state, so the balances in
+``SimResult`` reflect exactly what the integrator did.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from typing import Protocol, cast
 import numpy as np
 
 from ._typing import FloatArray
-from .ac_unit import OFF_STATE, ACUnit, CoilState
+from .ac_unit import OFF_STATE, ACUnit, CoilState, net_cooling
 from .inputs import PIECEWISE_CONSTANT, Disturbances, Scenario
 from .integrators import STEPPERS, euler_stability_limit, rk4_stability_limit
 from .params import RoomParams
@@ -54,7 +54,7 @@ IDX_CMD_S, IDX_CMD_FAN, IDX_CMD_VENT = 0, 1, 2
 N_CMD = 3
 
 # Cumulative integrals appended to the state
-AUX = ("E_in", "M_in", "CO2_in", "W_ext", "E_el", "M_drain")
+AUX = ("E_in", "M_in", "CO2_in", "W_ext", "E_el", "M_drain", "E_cool")
 
 STATE_NAMES = ("T_a", "T_m", "W", "phi_b", "C")
 STABILITY_LIMITS = {"euler": euler_stability_limit, "rk4": rk4_stability_limit}
@@ -293,7 +293,7 @@ def simulate(
             u, st = act.inputs(tt, xx, d)
             fl = fluxes(tt, xx[:N_STATES], u, d, p)
             aux = [fl.boundary_total, fl.water_boundary_total, fl.co2_total, fl.water_external,
-                   st.P_el, st.m_drain]
+                   st.P_el, st.m_drain, net_cooling(st, xx[IDX_TA])]
             return np.concatenate([derivatives(fl, p), [st.dM_coil] * act.n_states, aux])
 
         log(k, t, x, d_k)
@@ -309,7 +309,8 @@ def simulate(
     unit_log = None
     if unit is not None:
         unit_log = UnitLog(cmd=c_log, op={n: op_log[:, i] for i, n in enumerate(UNIT_FIELDS)},
-                           M_coil=x_log[:, N_STATES], E_el=aux["E_el"], M_drain=aux["M_drain"])
+                           M_coil=x_log[:, N_STATES], E_el=aux["E_el"], M_drain=aux["M_drain"],
+                           E_cool=aux["E_cool"])
     return SimResult(
         t=t_log, x=x_log[:, :N_STATES], u=u_log, d=Disturbances(*d_log.T),
         q={name: q_log[:, i] for i, name in enumerate(Fluxes._fields)},

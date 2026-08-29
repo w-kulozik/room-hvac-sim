@@ -21,7 +21,7 @@ from .inputs import DAY, HOUR
 from .results import SimResult
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from matplotlib.axes import Axes
     from numpy.typing import ArrayLike
@@ -487,5 +487,56 @@ def plot_ventilation_day(results: Mapping[str, SimResult], co2_limit: float,
     fig.suptitle(f"CO$_2$ and ventilation flow over one day (line: {co2_limit:.0f} ppm; "
                  "grey: occupied)",
                  x=0.06, y=1.0, ha="left", va="bottom", fontsize=11, fontweight="semibold")
+    fig.savefig(path)
+    plt.close(fig)
+
+
+def plot_season_monthly(monthly: Mapping[tuple[str, str], tuple[Sequence[float], Sequence[float]]],
+                        sites: Sequence[str], controllers: Sequence[str], months: Sequence[str],
+                        path: StrPath) -> None:
+    """Plot the monthly electricity and EER in use per site and controller, and save.
+
+    Top row: electrical energy of the unit per month (kWh); bottom row: net cooling over
+    electricity per month (W/W). One column per site, one bar per controller.
+
+    Parameters
+    ----------
+    monthly : mapping of (site, controller) to (electricity, cooling)
+        Monthly electrical energy and net cooling delivered, kWh, one value per month.
+    sites : sequence of str
+        Site names, one column each.
+    controllers : sequence of str
+        Controller names (at most five; colours follow `SERIES`).
+    months : sequence of str
+        Month labels.
+    path : str or os.PathLike
+        Output file.
+    """
+    n_c = len(controllers)
+    width = 0.8 / n_c
+    x = np.arange(len(months))
+    fig, axes = plt.subplots(2, len(sites), figsize=(4.6 * len(sites), 5.4), sharex=True,
+                             sharey="row", squeeze=False)
+    for j, site in enumerate(sites):
+        axE, axR = axes[0, j], axes[1, j]
+        for i, (name, color) in enumerate(zip(controllers, SERIES, strict=False)):
+            elec, cool = (np.asarray(v, dtype=float) for v in monthly[(site, name)])
+            xi = x + (i - (n_c - 1) / 2) * width
+            axE.bar(xi, elec, width, color=color, label=name, edgecolor="#fcfcfb", linewidth=1)
+            eer = np.divide(cool, elec, out=np.full_like(cool, np.nan), where=elec > 0)
+            axR.bar(xi, eer, width, color=color, edgecolor="#fcfcfb", linewidth=1)
+        axE.set_title(site)
+        for ax in (axE, axR):
+            ax.set_axisbelow(True)
+            ax.grid(axis="x", visible=False)
+        axR.set_xticks(x)
+        axR.set_xticklabels(months)
+    axes[0, 0].set_ylabel("Electricity (kWh)")
+    axes[1, 0].set_ylabel("EER in use (W/W)")
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper left", bbox_to_anchor=(0.06, 1.0), ncol=n_c)
+    fig.suptitle("Cooling season by month: electricity of the unit and net cooling per kWh",
+                 x=0.06, y=1.06, ha="left", va="bottom", fontsize=11, fontweight="semibold")
+    fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)

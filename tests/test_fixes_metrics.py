@@ -32,7 +32,7 @@ def _result(s, f=None, n_occ=None, T_a=None):
     x[:, IDX_W] = 0.010
     z = np.zeros(n)
     unit = UnitLog(cmd=np.column_stack([s, f, z]), op={k: z.copy() for k in UNIT_FIELDS},
-                   M_coil=z.copy(), E_el=z.copy(), M_drain=z.copy())
+                   M_coil=z.copy(), E_el=z.copy(), M_drain=z.copy(), E_cool=z.copy())
     return SimResult(t=np.arange(n) * DT, x=x, u=np.zeros((n, 3)),
                      d=Disturbances(z + 30.0, z + 0.012, z.copy(), n_occ, z + 420.0), q={},
                      E_in=z.copy(), M_in=z.copy(), CO2_in=z.copy(), W_ext=z.copy(),

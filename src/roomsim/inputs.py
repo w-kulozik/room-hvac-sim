@@ -111,6 +111,36 @@ def hour_of_day(t: FloatOrArray) -> FloatArray:
     return h
 
 
+def occupants(t: FloatOrArray, n_people: float, start_h: float, end_h: float,
+              occupancy: tuple[tuple[float, float, float], ...] | None = None) -> FloatArray:
+    """Compute the number of occupants of a daily schedule.
+
+    Parameters
+    ----------
+    t : float or ndarray
+        Time from midnight of day 0, s.
+    n_people : float
+        Occupants during [start_h, end_h), -.
+    start_h, end_h : float
+        Occupied period, clock hours (h); start_h > end_h crosses midnight.
+    occupancy : tuple of (float, float, float), optional
+        Intervals (start_h, end_h, people), h, h, -. If given, it replaces n_people and the
+        occupied period; a later interval overrides an earlier one where they overlap.
+
+    Returns
+    -------
+    ndarray
+        Number of occupants, -.
+    """
+    h = hour_of_day(t)
+    if occupancy is None:
+        return np.where(_in_interval(h, start_h, end_h), n_people, 0.0)
+    n = np.zeros_like(h)
+    for start, end, people in occupancy:
+        n = np.where(_in_interval(h, start, end), people, n)
+    return n
+
+
 @dataclass(frozen=True)
 class SummerScenario:
     """Sinusoidal summer day repeated indefinitely.
@@ -248,14 +278,7 @@ class SummerScenario:
         ndarray
             Number of occupants, -.
         """
-        h = hour_of_day(t)
-        if self.occupancy is None:
-            occupied = _in_interval(h, self.occ_start_h, self.occ_end_h)
-            return np.where(occupied, self.n_people, 0.0)
-        n = np.zeros_like(h)
-        for start, end, people in self.occupancy:
-            n = np.where(_in_interval(h, start, end), people, n)
-        return n
+        return occupants(t, self.n_people, self.occ_start_h, self.occ_end_h, self.occupancy)
 
     def __call__(self, t: FloatOrArray) -> Disturbances:
         """Evaluate all disturbances.

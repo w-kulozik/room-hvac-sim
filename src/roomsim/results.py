@@ -47,6 +47,9 @@ class UnitLog:
         Cumulative electrical energy since t_0, J.
     M_drain : FloatArray
         Cumulative condensate drained since t_0, kg.
+    E_cool : FloatArray
+        Cumulative net cooling delivered to the room since t_0 (sensible plus latent, minus
+        the indoor-fan heat; ``roomsim.ac_unit.net_cooling``), J.
     running_before : bool
         True when the compressor was running (s > 0) on the step just before t_0, i.e. the
         record is a window of a longer run that starts inside a compressor cycle. False for
@@ -58,6 +61,7 @@ class UnitLog:
     M_coil: FloatArray           # water held on the coil, kg
     E_el: FloatArray             # cumulative electrical energy since t_0, J
     M_drain: FloatArray          # cumulative condensate drained since t_0, kg
+    E_cool: FloatArray           # cumulative net cooling delivered since t_0, J
     running_before: bool = False  # compressor running on the step before t_0
 
     def window(self, m: BoolArray) -> UnitLog:
@@ -71,9 +75,9 @@ class UnitLog:
         Returns
         -------
         UnitLog
-            Selected rows; `E_el` and `M_drain` start from zero at the first selected row, and
-            `running_before` holds the compressor state of the row before it (inherited when
-            the block starts at the first row).
+            Selected rows; `E_el`, `M_drain` and `E_cool` start from zero at the first selected
+            row, and `running_before` holds the compressor state of the row before it (inherited
+            when the block starts at the first row).
         """
         i0 = int(np.argmax(m))
         running_before = (bool(self.cmd[i0 - 1, 0] > 0) if i0 > 0  # IDX_CMD_S of simulate
@@ -81,6 +85,7 @@ class UnitLog:
         return UnitLog(cmd=self.cmd[m], op={k: v[m] for k, v in self.op.items()},
                        M_coil=self.M_coil[m], E_el=self.E_el[m] - self.E_el[m][0],
                        M_drain=self.M_drain[m] - self.M_drain[m][0],
+                       E_cool=self.E_cool[m] - self.E_cool[m][0],
                        running_before=running_before)
 
 

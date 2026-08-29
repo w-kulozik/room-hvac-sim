@@ -9,6 +9,7 @@ simulator checks it against ``dt_ctrl``. Controllers that only use the time t ha
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -17,6 +18,27 @@ import numpy as np
 from .._typing import FloatArray
 from ..inputs import hour_of_day
 from ..tariff import check_daily_window, in_daily_window
+
+SetPoint = float | Callable[[float], float]
+"""Constant set point (degC) or a schedule of time (s) returning degC."""
+
+
+def set_point_at(T_set: SetPoint, t: float) -> float:
+    """Return the set point at time t.
+
+    Parameters
+    ----------
+    T_set : float or callable
+        Set point, degC, or a function of time (s) returning it.
+    t : float
+        Time, s.
+
+    Returns
+    -------
+    float
+        Set point, degC.
+    """
+    return T_set(t) if callable(T_set) else T_set
 
 
 class Controller(Protocol):

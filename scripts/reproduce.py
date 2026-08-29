@@ -25,6 +25,7 @@ STUDIES = [
     "compare_humidity.py",
     "compare_mpc.py",
     "compare_ventilation.py",
+    "compare_season.py",
 ]
 
 

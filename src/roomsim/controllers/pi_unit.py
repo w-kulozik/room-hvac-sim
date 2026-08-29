@@ -7,7 +7,6 @@ with what was actually delivered (back-calculation) or frozen while the unit cyc
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -19,16 +18,15 @@ from ..plant import IDX_Y_TA
 from .base import (
     NO_VENTILATION,
     CompressorGuard,
+    SetPoint,
     VentilationSchedule,
     common_sampling_period,
     fan_command,
     sampling_period,
+    set_point_at,
 )
 from .lowload import HysteresisLowLoad, LowLoadHandler, SigmaDeltaLowLoad, ripple_T_ref
 from .pi import DiscretePI, room_pi_tuning
-
-SetPoint = float | Callable[[float], float]
-"""Constant set point (degC) or a schedule of time (s) returning degC."""
 
 
 class PIUnitController:
@@ -81,7 +79,7 @@ class PIUnitController:
 
     def set_point(self, t: float) -> float:
         """Return the set point at time t (s), degC; T_set may be a constant or a schedule."""
-        return self.T_set(t) if callable(self.T_set) else self.T_set
+        return set_point_at(self.T_set, t)
 
     def step(self, t: float, y: FloatArray) -> FloatArray:
         """Return the command for one controller sample and update the PI.

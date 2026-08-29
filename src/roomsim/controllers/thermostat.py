@@ -6,7 +6,14 @@ import numpy as np
 
 from .._typing import FloatArray
 from ..plant import IDX_Y_TA
-from .base import NO_VENTILATION, CompressorGuard, VentilationSchedule, fan_command
+from .base import (
+    NO_VENTILATION,
+    CompressorGuard,
+    SetPoint,
+    VentilationSchedule,
+    fan_command,
+    set_point_at,
+)
 
 
 class OnOffThermostat:
@@ -16,8 +23,8 @@ class OnOffThermostat:
 
     Parameters
     ----------
-    T_set : float, optional
-        Set point, degC.
+    T_set : float or callable, optional
+        Set point, degC, or a function of time (s) returning it.
     band : float, optional
         Hysteresis band (total width), K.
     s_on : float, optional
@@ -32,7 +39,7 @@ class OnOffThermostat:
         Minimum run and stop times of the compressor, s.
     """
 
-    def __init__(self, T_set: float = 25.0, band: float = 1.0, s_on: float = 1.0,
+    def __init__(self, T_set: SetPoint = 25.0, band: float = 1.0, s_on: float = 1.0,
                  fan: float = 1.0, fan_mode: str = "auto",
                  ventilation: VentilationSchedule = NO_VENTILATION,
                  min_on: float = 180.0, min_off: float = 180.0) -> None:
@@ -55,10 +62,10 @@ class OnOffThermostat:
         ndarray, shape (3,)
             Command [s (-), f (-), V_vent (m3/s)].
         """
-        T, g = y[IDX_Y_TA], self.guard
-        if not g.on and self.T_set + 0.5 * self.band <= T and g.can_start(t):
+        T, g, T_set = y[IDX_Y_TA], self.guard, set_point_at(self.T_set, t)
+        if not g.on and T_set + 0.5 * self.band <= T and g.can_start(t):
             g.set(t, True)
-        elif g.on and self.T_set - 0.5 * self.band >= T and g.can_stop(t):
+        elif g.on and T_set - 0.5 * self.band >= T and g.can_stop(t):
             g.set(t, False)
         s = self.s_on if g.on else 0.0
         return np.array([s, fan_command(s, self.fan, self.fan_mode), self.ventilation(t)])
