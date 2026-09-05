@@ -5,7 +5,7 @@
 | Net EER at rating | 4.50 | 3.45 |
 | Minimum capacity at rating conditions (kW) | 1.30 | 0.99 |
 | Maximum capacity (kW) | 3.20 | 2.41 (no boost) |
-| SEER | 8.65 | not computed |
+| SEER | 8.65 | 4.43 (D46) |
 | Indoor airflow, highest / lowest step (m³/h) | 630 / 246 | 450 / 180 |
 | Indoor unit power, cooling nominal (W) | 25 | 25 (full fan) |
 | Power with the compressor off, fan running (W) | 6 (thermostat-off mode) | 6.3 (fan at minimum) |

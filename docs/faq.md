@@ -156,3 +156,17 @@ cascade. No search has been carried out for this project, so nothing is claimed 
 The results here suggest what a claim would have to rest on: in the model the cascade's
 advantage over a direct RH loop on the fan is small (RH standard deviation 0.60 against 0.88 %
 with the same mean and energy).
+
+## 6. The model's SEER is half the label. Is the seasonal calculation wrong?
+
+No; the calculation is checked on the real unit itself. From the declared part-load points
+and the low-power modes of the data book, the bin method of Regulation (EU) No 206/2012 gives
+8.65 and 101 kWh a year, exactly the published values (D46, `tests/test_seasonal.py`). The
+same calculation on the model gives 4.43 because the model's EER hardly rises at part load:
+5.07 at 25 °C outdoors against 10.17 for the real unit. The model's 15 K minimum condensing
+lift (D20) caps its COP in mild weather, where most of the bin hours lie.
+
+What the seasonal study can still say is relative: how far the model falls short of its own
+rating in use (11-13 % with the PI, 26-29 % with on/off cycling) and how much the rating moves
+with the climate (the real unit's SEER is 10.0 with Munich's hours and 7.2 with Madrid's).
+These comparisons use one model throughout, so its low absolute efficiency largely cancels.

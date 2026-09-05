@@ -497,7 +497,8 @@ def plot_season_monthly(monthly: Mapping[tuple[str, str], tuple[Sequence[float],
     """Plot the monthly electricity and EER in use per site and controller, and save.
 
     Top row: electrical energy of the unit per month (kWh); bottom row: net cooling over
-    electricity per month (W/W). One column per site, one bar per controller.
+    electricity per month (W/W), left out for months below 1 kWh, where the ratio is dominated
+    by start-up transients and fan-only operation. One column per site, one bar per controller.
 
     Parameters
     ----------
@@ -523,7 +524,7 @@ def plot_season_monthly(monthly: Mapping[tuple[str, str], tuple[Sequence[float],
             elec, cool = (np.asarray(v, dtype=float) for v in monthly[(site, name)])
             xi = x + (i - (n_c - 1) / 2) * width
             axE.bar(xi, elec, width, color=color, label=name, edgecolor="#fcfcfb", linewidth=1)
-            eer = np.divide(cool, elec, out=np.full_like(cool, np.nan), where=elec > 0)
+            eer = np.divide(cool, elec, out=np.full_like(cool, np.nan), where=elec >= 1.0)
             axR.bar(xi, eer, width, color=color, edgecolor="#fcfcfb", linewidth=1)
         axE.set_title(site)
         for ax in (axE, axR):
@@ -535,7 +536,8 @@ def plot_season_monthly(monthly: Mapping[tuple[str, str], tuple[Sequence[float],
     axes[1, 0].set_ylabel("EER in use (W/W)")
     handles, labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper left", bbox_to_anchor=(0.06, 1.0), ncol=n_c)
-    fig.suptitle("Cooling season by month: electricity of the unit and net cooling per kWh",
+    fig.suptitle("Cooling season by month: electricity of the unit and net cooling per kWh "
+                 "(not shown below 1 kWh)",
                  x=0.06, y=1.06, ha="left", va="bottom", fontsize=11, fontweight="semibold")
     fig.tight_layout()
     fig.savefig(path)

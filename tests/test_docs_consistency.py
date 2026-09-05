@@ -98,6 +98,17 @@ CASES = [
         DOCS / "results.md", "Point", FIG / "rated_comparison.md", "Point",
         "same", "same",
     ),
+    (
+        DOCS / "results.md", "Bins", FIG / "seer.md", "Bins",
+        "same", "same",
+    ),
+    (
+        DOCS / "results.md", "City, controller", FIG / "season_comparison.md", "City, controller",
+        {f"{city}, {d}": f"{city}, {g}" for city in ("Munich", "Madrid")
+         for d, g in (("on/off thermostat", "On/off thermostat"), ("PI (C)", "PI (C)"),
+                      ("PI (C) + H2 cascade", "PI (C) + H2 cascade"))},
+        "same",
+    ),
 ]
 
 VENT_COLUMNS = {"Total energy (kWh)": "Total (kWh)", "Air (m³)": "Air (m³)",

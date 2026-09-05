@@ -5,7 +5,8 @@ against analytical solutions and used to test and compare air-conditioning contr
 
 - **The room:** an air node, a thermal-mass node, a moisture balance with buffering by the
   interior surfaces, a CO2 balance and proper psychrometrics.
-- **What drives it:** outdoor weather, sun through a window, and occupants coming and going.
+- **What drives it:** outdoor weather (a synthetic summer day, or measured typical years for
+  Munich and Madrid), sun through a window, and occupants coming and going.
 - **The unit model:** the cooling coil (dry, partially wet or wet), capacity that falls with
   airflow and evaporating temperature, the water held on the coil, frost
   protection, part-load efficiency and start-up losses.
@@ -16,7 +17,8 @@ against analytical solutions and used to test and compare air-conditioning contr
 
 ## Main findings
 
-All results are from simulation of one synthetic summer day, repeated (see Limits below).
+Findings 1-4 are from simulation of one synthetic summer day, repeated; finding 5 is from a
+full cooling season with measured weather (see Limits below).
 
 1. **A proportional-integral (PI) controller uses 30 % less energy than an on/off thermostat
    but loses most of the humidity control.**
@@ -39,16 +41,25 @@ All results are from simulation of one synthetic summer day, repeated (see Limit
 4. **Demand-controlled ventilation pays only when occupancy varies.** A fixed flow sized for
    the peak needs 78 % more air and 7 % more energy. Night flush pays only at about half the
    design flow.
-5. **The numerics are verified.**
+5. **Over a cooling season with measured weather the PI saves 22-30 % against the on/off
+   thermostat, and the unit's label overstates its efficiency in use.**
+   - Season May-September with typical meteorological years of Munich and Madrid (PVGIS).
+   - The seasonal efficiency (SEER) of Regulation (EU) No 206/2012 is implemented and checked:
+     from the published data of the real unit it gives the declared 8.65. The model rates 4.43.
+   - In use the model delivers 11-13 % less cooling per kWh than its own rating with the PI,
+     and 26-29 % less with the on/off thermostat, which cycles at every load.
+   - The humidity cascade costs 6.5 % in Munich and never acts in dry Madrid.
+6. **The numerics are verified.**
    - Fourth-order convergence with the unit inside the integrator, with a constant command and
      in closed loop with the sampled PI, while the coil stays in one regime; second order on
      trajectories that cross from a fully wet into a partially wet coil.
    - Energy, water and CO2 balances closed to round-off.
-   - 242 automated tests.
+   - 282 automated tests.
 
 ## Limits
 
-- One zone with well-mixed air, and one sinusoidal summer day repeated; no measured weather.
+- One zone with well-mixed air. The controller studies use one sinusoidal summer day; the
+  seasonal study uses typical meteorological years, cooling only, every day a working day.
 - The model has not been validated against measurements of a real room. Room and unit
   parameters are plausible for a small office and a 2.5 kW split unit, not fitted to a
   specific building or product.
@@ -68,7 +79,7 @@ Read in this order:
 2. [docs/results.md](docs/results.md): every study with its table and figure. The findings
    above come from here.
 3. [docs/verification.md](docs/verification.md): what is checked and how accurately.
-4. [docs/decisions.md](docs/decisions.md): the log of modelling and study decisions (D1-D42).
+4. [docs/decisions.md](docs/decisions.md): the log of modelling and study decisions (D1-D49).
    It records which ones were fixed before running a study, the corrections made after the
    end-of-project check, after an external review and after the final audit, and the known
    limitations.
@@ -88,7 +99,7 @@ pip install -e ".[dev]"
 python scripts/reproduce.py --check
 ```
 
-`reproduce.py` runs every study in turn (about five minutes), writes the figures and result
+`reproduce.py` runs every study in turn (about ten minutes), writes the figures and result
 tables to `figures/`, checks that the tables quoted in `docs/` match them, and with `--check`
 fails if any regenerated file differs from the committed one. The studies are deterministic,
 so on a clean checkout every file is reproduced byte for byte. Each study can also be run on
@@ -97,7 +108,7 @@ its own, for example `python scripts/compare_mpc.py`.
 ## Development
 
 ```bash
-pytest                  # about 3 minutes
+pytest                  # about 3.5 minutes
 ruff check .            # lint (pyflakes, pycodestyle, bugbear, docstrings, numpy rules)
 mypy                    # strict type check of src/ and scripts/
 ```
@@ -120,6 +131,8 @@ src/roomsim/
   psychro.py       psychrometric functions
   params.py        RoomParams dataclass, derived constants
   inputs.py        disturbance scenarios d(t), vectorised for forecasts
+  weather.py       typical meteorological year as a scenario (PVGIS data)
+  solar.py         solar position and irradiance on a tilted plane
   plant.py         rhs(t, x, u, d, p), flux breakdown, Jacobian, sensors
   ac_unit.py       inverter split unit: partially wet coil, capacity, cycle, frost protection,
                    fans, start-up, coil water
@@ -133,11 +146,14 @@ src/roomsim/
   estimation.py    Kalman filter with a disturbance state (offset-free)
   tariff.py        time-of-use electricity price
   ventilation.py   ventilation fan power (affinity law)
+  seasonal.py      SEER by the bin method of Regulation (EU) No 206/2012
+  reference_unit.py published data of the real unit used for comparison
   controllers/     on/off thermostat, discrete PI with anti-windup, low-load handlers,
                    humidity-aware fan control (direct and cascade), economic MPC,
                    ventilation strategies (scheduled, CO2 PI, staged, night flush)
-scripts/           one script per study, and reproduce.py to run them all
-tests/             242 tests; tolerance rules in tests/README.md and tests/criteria.py
+scripts/           one script per study, reproduce.py to run them all, fetch_weather.py
+data/weather/      typical meteorological years (PVGIS, CC BY 4.0) with source notes
+tests/             282 tests; tolerance rules in tests/README.md and tests/criteria.py
 docs/              model, results, verification, decisions, FAQ, specification, references
 figures/           figures and result tables written by the scripts
 ```

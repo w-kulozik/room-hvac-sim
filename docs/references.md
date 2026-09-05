@@ -108,6 +108,9 @@ taken from it. Nothing else in the project relies on these sources.
       19 °C wet bulb indoors, 35 °C outdoors, 5 m of piping. The extracted table interleaves two
       variants of each indoor unit; at points B and C the two variants differ in the second
       decimal (6.52 or 6.54; 10.17 or 10.14), and the first value is used.
+    - Read again on 24 October 2026 for the seasonal study: page 19 (Pdesignc 2.50 kW, annual
+      consumption 101 kWh) and page 21 (off mode 1 W, standby 1 W, thermostat-off 6 W in
+      cooling, degradation coefficient Cdc 0.25), used in the SEER check of D46.
 12. Daikin Europe N.V. *Wandgerät Klimatisierung, Technische Daten, FTXM-R*, EEDDE22 (German).
     Read in a copy hosted by a reseller:
     <https://www.klimaanlagen-heizungen.de/media/pdf/91/75/08/Daikin-Perfera-Wandgeraet-FTXM-Datenblatt.pdf>,
@@ -125,3 +128,42 @@ taken from it. Nothing else in the project relies on these sources.
     accessed 11 October 2026.
     - Read: groups F24F 3/14-3/1405, 11/00-11/89 and the indexing codes F24F 2110/00-2140/60.
     - Used: the group titles in [faq.md](faq.md), question 5.
+
+## Seasonal efficiency and weather
+
+14. Commission Regulation (EU) No 206/2012 of 6 March 2012 implementing Directive 2009/125/EC
+    with regard to ecodesign requirements for air conditioners and comfort fans. OJ L 72,
+    10.3.2012. <https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32012R0206>,
+    accessed 24 October 2026.
+    - Read: Annex I, definitions 13-33 and 45-56; Annex II, Tables 1 (bins), 2, 3 (reference
+      design conditions) and 4 (operational hours).
+    - Used: the cooling bins 17-40 °C with their hours (2 602 h), the part load ratio, the
+      definitions of SEER, SEERon and QCE, and the hours H_CE 350, H_TO 221, H_SB 2 142,
+      H_OFF 0 and H_CK 2 672 of a unit that cools and heats (D46).
+15. European Commission (2012). Commission communication in the framework of the
+    implementation of Commission Regulation (EU) No 206/2012 and of Commission Delegated
+    Regulation (EU) No 626/2011 (transitional methods of measurement and calculation),
+    2012/C 172/01. OJ C 172, 16.6.2012, pp. 1-26. Read in a copy hosted by the Spanish
+    air-conditioning manufacturers' association:
+    <https://www.afec.es/documentos/english/communication-2012-172.pdf>, accessed
+    24 October 2026.
+    - Read: section 3.1 (SEER), equations 1-17, and the start of section 3.2 (SCOP).
+    - Used: the calculation of SEERon from the bins and the EERbin rules for fixed, staged and
+      variable-capacity units, including the degradation for cycling (equations 8, 15) and the
+      10 % capacity tolerance (D46).
+16. European Commission, Joint Research Centre. *PVGIS 5.3, typical meteorological year tool*.
+    <https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-information-system-pvgis_en>;
+    data from the web service <https://re.jrc.ec.europa.eu/api/v5_3/tmy>, retrieved
+    24 October 2026; documentation page
+    <https://joint-research-centre.ec.europa.eu/PVGIS/tools/tmy_en>.
+    - Read: the documentation of the TMY tool (data sources, the irradiance time offset, the
+      time stamps).
+    - Used: the hourly typical years of Munich and Madrid (D43), stored in `data/weather/`.
+      Licence: the Commission's legal notice
+      (<https://commission.europa.eu/legal-notice_en>, read 24 October 2026) licenses its
+      content under CC BY 4.0.
+17. Solar position: the Fourier series of Spencer (1971) for the declination and the equation of
+    time, and the formula for the angle of incidence on a tilted plane, in the form given in
+    solar-engineering textbooks; checked against the low-precision solar coordinates of the
+    astronomical almanac (D44, `tests/test_solar.py`) and against the PVGIS data themselves.
+    The original papers were not consulted.

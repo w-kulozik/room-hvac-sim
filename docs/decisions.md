@@ -908,6 +908,37 @@ parameter fixed here is changed after seeing them.
   and the weather scenario) and `seasonal.py` (bin method); new script
   `scripts/compare_season.py`, added to `reproduce.py`.
 
+### D49. Seasonal results against the expectations
+- **Timing:** after the runs. This entry only records outcomes; nothing fixed in D43-D48 was
+  changed. Tables: [results.md](results.md#cooling-season-with-measured-weather).
+- **E1, the model's SEER: met.** 4.43 (SEERon 4.51), against the published 8.65. The anchor
+  EERs are 3.45, 4.26, 5.07 and 4.34 (D degraded for cycling); the real unit's rise from 4.50 to
+  16.51, so the gap is the known part-load gap of D30-D32.
+- **E2, local bins: met.** With the published data SEERon is 10.39 with Munich's bins, 8.96
+  with the reference season and 7.46 with Madrid's; for the model 4.52, 4.51 and 4.27, the
+  same order with much smaller differences.
+- **E3, in use against the rating: met.** The seasonal EER in use is below the model's SEERon
+  with the local bins by 11-13 % with the PI (3.95 against 4.52 in Munich, 3.81 against 4.27
+  in Madrid), by 10 % with the H2 cascade in Munich and by 26-29 % with the on/off thermostat.
+  The bin method charges cycling with Cdc = 0.25 at the 20 °C point only; the thermostat,
+  which runs at full speed and cycles at every load, falls furthest below it.
+- **E4, controllers: met in Munich, partly in Madrid.**
+  - The PI uses less electricity than the on/off thermostat: 30 % less in Munich, 22 % less in
+    Madrid (in the range 15-35 %).
+  - The H2 cascade uses 6.5 % more than the PI in Munich and lowers the occupied RH slightly
+    (56.8 against 57.4 %). In Madrid it is identical to the PI: the occupied RH there is 37 %,
+    far below the 55 % set point, so the cascade keeps the fan at full speed all season. The
+    expectation did not foresee a climate where the humidity loop never acts.
+- **E5, cities: the first part met, the low-confidence part not.** Madrid uses 5.8-6.4 times
+  Munich's electricity. The EER in use is lower in Madrid (3.81 against 3.95 with the PI), not
+  higher: the hotter outdoor air raises the condensing temperature more than the longer
+  modulating periods help. In Madrid the PI still runs at minimum speed for 75 % of its running
+  time (89 % in Munich).
+- **Not expected:** Munich needs little cooling (33-46 kWh, most of it in August, whose TMY
+  month comes from the hot summer of 2015). With no heating, the room is below the occupied
+  band for long periods in May, June and September (about 3 600 K·h over the season); this is
+  the room free-floating in a cool climate, not a fault of the controllers.
+
 ## Structure
 
 ### D19. Refactor of the simulation interface
@@ -978,8 +1009,14 @@ stated basis:
 - The MPC's Kalman filter estimates the last sample's cooling with full fan speed, no start-up
   ramp and the forecast outdoor temperature. The disturbance state absorbs the difference.
 - Single zone, well-mixed air; no radiant temperature or operative-temperature comfort.
-- One synthetic summer day (sinusoidal outdoor temperature, constant outdoor humidity ratio,
-  half-sine solar irradiance) repeated; no measured weather and no other seasons.
+- The controller studies use one synthetic summer day (sinusoidal outdoor temperature,
+  constant outdoor humidity ratio, half-sine solar irradiance), repeated.
+- The seasonal study (D43-D49) uses typical meteorological years of two cities, cooling only:
+  every day is a working day, the window has no shading and no fall of transmittance at large
+  angles of incidence, the isotropic sky underestimates circumsolar diffuse light, and the MPC
+  is not run on it.
+- The model's SEER uses the low-power modes of the real unit (6, 1, 1 W), since the model has
+  no standby electronics.
 - The model is verified (the equations are solved correctly) but not validated against
   measurements of a real room or unit.
 - The MPC's model has no humidity, so it cannot trade sensible against latent load.

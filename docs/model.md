@@ -49,6 +49,29 @@ sinusoidal summer day 20-32 °C, outdoor humidity ratio constant at 0.0115 kg/kg
 Time scales: air ≈ 1 700 s, mass ≈ 3.1 days, air-buffer moisture exchange ≈ 400 s,
 apparent room moisture ≈ 15 000 s (twice the 7 200 s of the air alone).
 
+### Measured weather
+
+For the seasonal study the disturbances come from a typical meteorological year instead of the
+sinusoidal day (`roomsim.weather`, decisions D43-D44):
+
+- Hourly data from PVGIS 5.3 (European Commission, Joint Research Centre) for Munich and
+  Madrid, stored in `data/weather/` with their source and licence.
+- Simulation time is local clock time from midnight of 1 January (UTC + 2 h in summer), so the
+  daily schedules keep working on clock hours. The year has 365 days and wraps around.
+- Outdoor temperature and vapour pressure are interpolated linearly between the hourly values;
+  the humidity ratio is computed from the vapour pressure at standard pressure, which keeps the
+  outdoor dew point.
+- Sun on the window: a vertical window facing south, with the solar position from Spencer's
+  series and the isotropic-sky transposition
+
+  ```
+  G_win = Gb(n) max(cos θ, 0) + Gd(h) (1 + cos β)/2 + ρ G(h) (1 − cos β)/2,   β = 90°, ρ = 0.2
+  ```
+
+  computed at the instant of each irradiance value (the stamped hour plus the offset given in
+  the file) and interpolated linearly. The transmittance of the glazing does not fall at large
+  angles of incidence.
+
 ## Air-conditioning unit
 
 Inverter split unit, 2.5 kW at 35 °C outdoor, net energy efficiency ratio (EER) 3.5 at rating

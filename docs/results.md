@@ -313,7 +313,7 @@ state with full fan. All capacities and EERs are net of the indoor fan heat.
 | Net EER at rating | 4.50 | 3.45 |
 | Minimum capacity at rating conditions (kW) | 1.30 | 0.99 |
 | Maximum capacity (kW) | 3.20 | 2.41 (no boost) |
-| SEER | 8.65 | not computed |
+| SEER | 8.65 | 4.43 (D46) |
 | Indoor airflow, highest / lowest step (m³/h) | 630 / 246 | 450 / 180 |
 | Indoor unit power, cooling nominal (W) | 25 | 25 (full fan) |
 | Power with the compressor off, fan running (W) | 6 (thermostat-off mode) | 6.3 (fan at minimum) |
@@ -344,5 +344,79 @@ minimum, the model runs at its minimum speed). No cycling degradation is applied
   result) are conservative.
 - **Minimum capacity:** 0.99 kW against 1.30 kW. The model modulates further down, so it cycles
   less at low load than this product would.
-- **Not compared:** SEER (it needs the seasonal bin method, not implemented) and
-  dehumidification, for which no published data of this unit were found.
+- **SEER:** 4.43 for the model, by the bin method of the regulation (next section), against
+  8.65. The same calculation applied to the published points gives 8.65, so the gap is the
+  model's, not the method's.
+- **Not compared:** dehumidification, for which no published data of this unit were found.
+
+## Cooling season with measured weather
+
+Script: `scripts/compare_season.py`. Design and expectations, fixed before the runs: decisions
+D43-D47 in [decisions.md](decisions.md); outcomes against the expectations: D49.
+
+The room and the unit of the other studies, run from 1 May to 30 September (after 7 warm-up
+days) with the typical meteorological years of Munich and Madrid from PVGIS. The window faces
+south. Every day is a working day: two people from 8 to 18 h, the set point 25 °C from 6 to
+18 h and 28 °C otherwise. The unit only cools. Three controllers: the on/off thermostat, the PI
+with sigma-delta low-load handling (C) and the same PI with the H2 humidity cascade.
+
+### Seasonal efficiency by the bin method
+
+The SEER of Regulation (EU) No 206/2012, computed by the method of the Commission's
+communication 2012/C 172/01 ([references.md](references.md), items 14 and 15): reference bins
+17-40 °C (2 602 h), part load proportional to the outdoor temperature above 16 °C, EER
+interpolated between the points at 35, 30, 25 and 20 °C, and a degradation for cycling where
+the load is below the minimum capacity. "Local bins" are the hours of each city's typical year
+in the same 1 K bins; they show how the rating changes with the climate.
+
+| Bins | Bin hours (h) | Reference unit SEERon | Reference unit SEER | Model SEERon | Model SEER |
+|---|---|---|---|---|---|
+| reference season | 2602 | 8.96 | 8.65 | 4.51 | 4.43 |
+| Munich | 1626 | 10.39 | 9.98 | 4.52 | 4.43 |
+| Madrid | 3621 | 7.46 | 7.24 | 4.27 | 4.19 |
+| declared by the manufacturer | | | 8.65 | | |
+
+- **The method reproduces the label:** from the published points and the low-power modes of
+  the data book (thermostat-off 6 W, standby and off 1 W), the calculation gives 8.65 and an
+  annual consumption of 101 kWh, both as published. This is a test.
+- **The model:** SEER 4.43, about half the label. Its part-load EER barely rises (3.45 at 35 °C,
+  5.07 at 25 °C) where the real unit's triples, so the gap is the part-load gap shown in the
+  section above, not a new finding.
+- **Climate:** the same unit rates 10.0 with Munich's hours and 7.2 with Madrid's. The model's
+  rating moves much less (4.43 and 4.19), because its efficiency depends little on the load.
+
+### The season in use
+
+| City, controller | Electricity (kWh) | Net cooling (kWh) | EER in use | Model SEERon, local bins | Starts | Running at minimum speed (%) | K·h below band occ. | RH mean occ. (%) |
+|---|---|---|---|---|---|---|---|---|
+| Munich, on/off thermostat | 46.2 | 154.1 | 3.34 | 4.52 | 760 | 0 | 3606.6 | 56.0 |
+| Munich, PI (C) | 32.5 | 128.4 | 3.95 | 4.52 | 1063 | 89 | 3617.7 | 57.4 |
+| Munich, PI (C) + H2 cascade | 34.6 | 140.3 | 4.05 | 4.52 | 990 | 80 | 3616.5 | 56.8 |
+| Madrid, on/off thermostat | 266.8 | 814.0 | 3.05 | 4.27 | 4543 | 0 | 270.3 | 35.9 |
+| Madrid, PI (C) | 208.3 | 793.1 | 3.81 | 4.27 | 5428 | 75 | 273.0 | 37.2 |
+| Madrid, PI (C) + H2 cascade | 208.3 | 793.2 | 3.81 | 4.27 | 5424 | 75 | 273.0 | 37.2 |
+
+EER in use is the net cooling delivered (sensible plus latent, minus the indoor-fan heat,
+integrated with the state) over the electricity of the unit. No controller lets the room rise
+above the occupied band (0.0 K·h above it in every run); the full table, with runtime and
+humid hours, is in `figures/season_comparison.md`.
+
+![Monthly electricity and EER in use per city and controller](../figures/season_monthly.png)
+
+- **PI against on/off:** the PI uses 30 % less electricity in Munich and 22 % less in Madrid,
+  the same direction as on the synthetic day (30 %).
+- **In use against the rating:** the EER in use is 11-13 % below the model's own SEERon with the
+  PI, and 26-29 % below it with the on/off thermostat. The bin method charges cycling only
+  through one coefficient at 20 °C; a thermostat that runs at full speed and cycles at every
+  load is penalised much more in use than in the rating.
+- **The humidity cascade depends on the climate:** in Munich it costs 6.5 % more electricity
+  than the plain PI for a slightly drier room; in Madrid the occupied RH is 37 %, the cascade
+  never acts, and it is identical to the PI.
+- **Cooler air beats longer runs:** the EER in use is higher in Munich than in Madrid (3.95
+  against 3.81 with the PI), although the unit runs at minimum speed for 89 % of its running
+  time in Munich and 75 % in Madrid. The low-confidence expectation was the opposite (D47, E5).
+- **Munich hardly needs cooling:** 33-46 kWh in the season, most of it in August. Without
+  heating, the room stays below the occupied band in the cool months (about 3 600 K·h); this
+  is the room free-floating, not a fault of the controllers.
+- **Limits:** every day is a working day, the window has no shading or angle-dependent
+  transmittance, and the MPC is not run (its forecast model is the sinusoidal day).

@@ -2,11 +2,13 @@
 
 ## Checks
 
-All checks run in `pytest` (242 tests, about three minutes on a laptop). The code and documents
+All checks run in `pytest` (282 tests, about three and a half minutes on a laptop). The code and documents
 were checked again at the end of the project; the defects found and their fixes are in
 [decisions.md](decisions.md) (D20-D22). The unit model was revised after an external review
 (D29-D32); the tests added then are marked "(D29-D32)" below. A final audit corrected further
 defects and added robustness checks (D35-D42); the tests added then are marked "(D35-D42)".
+The seasonal study added measured weather and the seasonal efficiency (D43-D48); its tests are
+marked "(D43-D48)".
 
 RK4 is the classical fourth-order Runge-Kutta method, PI a proportional-integral controller and
 MPC model-predictive control. Convergence orders are fitted by least squares over a sequence of
@@ -57,6 +59,14 @@ halved time steps.
 | Daily windows crossing midnight (22-6 h): occupancy, ventilation schedule, comfort schedule, tariff peak (D35-D42) | active at 23 h and 2 h, not at 12 h |
 | Controller sampling period vs `dt_ctrl` (seven controllers at 30 s against their 60 s), and parts of one controller with different periods (D35-D42) | ValueError |
 | Cached exact discretisation of the control model is read-only (D35-D42) | write raises |
+| Solar position vs the low-precision solar coordinates of the astronomical almanac, over four years of the leap cycle (D43-D48) | declination ±0.6°, equation of time ±1.2 min (measured 0.3-0.5°, 0.7-0.9 min) |
+| Angle of incidence vs the dot product of sun and surface-normal vectors, seven orientations; vertical south wall at solar noon vs sin(φ − δ) (D43-D48) | 10⁻¹² |
+| Time convention of the weather data: horizontal irradiance rebuilt from beam and diffuse with our solar geometry, Munich and Madrid (D43-D48) | RMS 1.9 and 1.8 W/m² (8.3 and 12.4 W/m² without the irradiance time offset) |
+| Weather reader: rows as in the file, malformed files, periodic year, interpolation, dew point kept, local clock for the schedules (D43-D48) | exact; ValueError |
+| SEER of the real unit from its published points and low-power modes (D43-D48) | 8.65 and 101 kWh, as published |
+| SEER with the same EER at every bin; degradation rule; declared points of the unit model at the part load or at minimum speed (D43-D48) | 10⁻¹³; exact; 10⁻⁹ |
+| Net cooling integrated with the state vs the trapezoid of the logged values (D43-D48) | 10⁻⁵ relative |
+| On/off thermostat with a set-point schedule; with a constant set point identical to before (D43-D48) | follows the schedule; bit-identical |
 
 COP is the coefficient of performance of the compressor.
 
