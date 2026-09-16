@@ -939,6 +939,148 @@ parameter fixed here is changed after seeing them.
   band for long periods in May, June and September (about 3 600 K·h over the season); this is
   the room free-floating in a cool climate, not a fault of the controllers.
 
+## Heating with a heat pump
+
+Everything in D50-D56 was written down and committed before the heat-pump model was run in a
+season or evaluated against the published heating data. Outcomes are recorded afterwards in a
+separate entry.
+
+### D50. Heat-pump model: what is reused and what is new
+- **Timing:** a priori.
+- **Principle:** the heating mode is the same machine run backwards, so it reuses the cooling
+  calibration instead of being fitted to heating data. The comparison with the published
+  heating data is then an out-of-sample check.
+- **Reused without change:** the Carnot fraction η(s) calibrated to the rated cooling EER
+  (`ACUnit.eta_full`, `eta_rel`), the minimum lift of 15 K (D20), the compressor's
+  evaporating-temperature slope k_e = 0.040 1/K (D30), the indoor-fan law and airflow, the
+  start-up ramp and s_min.
+- **Indoor coil as condenser:** dry, sensible heating only. Refrigerant condensing at uniform
+  T_c; air-side and refrigerant-side conductances in series as in cooling (UA_a from the fan's
+  NTU, UA_r = UA_evap = 600 W/K), so Q_h = ε m c_p (T_c − T_in), ε = 1 − exp(−NTU_o).
+- **Outdoor coil as evaporator:** the cooling model's condenser conductance UA_cond = 300 W/K
+  is taken as the overall conductance of the clean outdoor coil, split equally between the air
+  side and the refrigerant side (600 and 600 W/K, an assumption). The surface temperature is
+  T_s = T_e + Q_e / UA_r,o. The air side carries sensible heat and, where the surface is below
+  the outdoor dew point, the latent heat of the water or frost deposited on it, with the mass
+  transfer coefficient UA_a,o / c_p (Lewis number 1). The air temperature across the coil is
+  taken as T_o, as the cooling model does for its condenser.
+- **Compressor capacity:** Q_e = s Q_rated exp[k_e (T_e − T_r,rated)]. At the rating point it
+  has the slope of the linear law of D30, which is its first-order expansion; the exponential
+  form is needed because in heating T_e goes down to −20 °C, 30 K below the rating, where the
+  linear law would give a negative capacity. The dependence on the condensing temperature is
+  neglected: in heating T_c lies between about 33 and 57 °C, within ±12 K of the cooling
+  rating's condensing temperature (45 °C); with k_o = 0.016 1/K that would change the capacity
+  by up to ±19 %, more at low load and less at high load, a known simplification.
+- **Cycle:** COP_h = η(s) T_c / max(T_c − T_e, ΔT_lift,min), temperatures in kelvin, with T_c
+  from the indoor coil. Q_h = Q_e + P_comp gives a quadratic in Q_h that is solved in closed
+  form; T_e follows from one root search (Brent) on the outdoor-coil balance.
+- **Maximum speed in heating:** real inverter units run their compressors faster in heating.
+  The reference unit's maximum heating capacity is 1.68 times its nominal (4.70 against
+  2.80 kW at 7 °C); cooling 1.28. The model is allowed s up to 1.68 in heating (none above 1 in
+  cooling, as before). The relative cycle efficiency keeps the quadratic loss of `eta_rel`,
+  mirrored above full speed: η_rel(1.68) = 0.76.
+- **Fans:** indoor fan as in cooling; outdoor fan 40 W while the compressor runs, as in cooling.
+
+### D51. Frost and defrost
+- **Timing:** a priori.
+- **Frost growth:** where the outdoor-coil surface is below 0 °C and below the outdoor frost
+  point, frost grows at ṁ_f = (UA_a,o / c_p) (W_o − W_sat,ice(T_s)); above 0 °C the water
+  condenses and drains. Saturation over ice uses the Magnus form of the same paper as over water
+  (Alduchov and Eskridge), coefficients 611.21 Pa, 22.587, 273.86 °C.
+- **Effect of frost:** blockage of the air passages; the air-side conductance (and with it the
+  mass transfer) falls as UA_a,o / (1 + M_f / M_half), M_half = 0.5 kg (an assumption for a
+  small outdoor coil; a sensitivity case halves and doubles it).
+- **Frost state:** M_f takes the place of the water held on the coil, the unit state of the
+  cooling mode (the evaporator's held water in both modes). With the compressor off and the
+  outdoor air above 0 °C the frost melts at UA_a,o T_o / h_fusion.
+- **Reverse-cycle defrost** (command s < 0): the compressor runs at full speed in the cooling
+  direction with the indoor fan off. It draws P_def = 700 W (about the model's rated cooling
+  power) and delivers Q_def = 2 000 W to the outdoor coil, of which half melts frost
+  (η_melt = 0.5; the rest warms the coil and is lost to the outdoor air), so 1 kg of frost
+  melts in about 5.6 minutes. The heat moved, Q_def − P_def = 1 300 W, is taken from the room.
+  Real units take much of it from the indoor coil's metal and refrigerant, which the room later
+  reheats; charging all of it to the room at once is the conservative bound.
+- **Sensors:** the outdoor unit has a coil thermistor and an outdoor-air thermistor; the
+  heat-pump measurement is [T_a, RH, C, T_s,o, T_o]. During defrost the coil reads 0 °C while
+  frost remains and 10 °C once it has melted (the dry coil warms quickly), with a short ramp in
+  between.
+
+### D52. Defrost control
+- **Timing:** a priori. A supervisor wraps the room controller and overrides its command.
+- **Termination:** coil thermistor ≥ 8 °C, or 10 minutes; then 60 s with the compressor off
+  (drip time) before the room controller takes over again (the restart has the start-up ramp).
+- **T, timed (time-temperature):** start a defrost after 40 minutes of accumulated compressor
+  running with the coil below −1 °C since the end of the last defrost. A common scheme; it
+  defrosts at a fixed interval whether there is frost or not.
+- **D, demand:** start a defrost when the coil reads 2 K below what a clean coil would read at
+  the same compressor speed, return air and outdoor temperature (the clean value from the unit
+  model with dry outdoor air, since such units have no outdoor humidity sensor), after at least
+  20 minutes of running since the last defrost; and in any case after 3 hours of running with
+  the coil below −1 °C.
+- **Expectation for the comparison:** in humid weather near 0 °C both strategies defrost often;
+  in cold dry weather the timed strategy defrosts a coil that carries little frost, and the
+  demand strategy saves those cycles.
+
+### D53. Heating controllers
+- **Timing:** a priori.
+- The PI with sigma-delta low-load handling and the on/off thermostat are used with the sign
+  of the error reversed (a room colder than the set point raises the demand). The PI is tuned
+  by the same SIMC rule with the heating capacity at full speed and 2 °C outdoors as the process
+  gain; the sigma-delta time scale for the same 0.5 K ripple with the heating output at s_min.
+- The indoor fan follows the compressor (it stops during defrost and drip time).
+- Set points: 20 °C from 6 to 18 h, 16 °C otherwise (set-back); occupied band 20 ± 1 °C.
+
+### D54. Heating season
+- **Timing:** a priori.
+- 1 October to 30 April (212 days) after 7 warm-up days, Munich and Madrid, the same typical
+  years, window, occupancy and ventilation as in the cooling season. Local time UTC + 1 h
+  throughout: the schedules are shifted by an hour against the weather in October and April,
+  which fall in daylight-saving time.
+- Runs: on/off thermostat with timed defrost; PI (C) with timed defrost; PI (C) with demand
+  defrost. Sensitivity (PI, demand, Munich only): M_half halved and doubled.
+- Indicators: electrical energy of the unit, heat delivered to the room, seasonal COP in use,
+  number of defrosts, time and energy in defrost, frost melted, degree-hours below the band
+  while occupied, running time at maximum speed.
+
+### D55. Seasonal coefficient of performance (SCOP)
+- **Timing:** a priori.
+- **Method:** Regulation (EU) No 206/2012 with the communication 2012/C 172/01, section 3.2,
+  average heating season (bins −10 to 15 °C, 4 910 h; Tdesignh = −10 °C; H_HE 1 400 h,
+  H_TO 179 h, H_CK 179 h, H_SB and H_OFF 0 for a unit that also cools), variable-capacity
+  rules with the 10 % tolerance, degradation Cdh = 0.25 where the part load is below the
+  declared capacity, back-up heater elbu = Ph − Pdh where the capacity is short, COPbin
+  extrapolated above 12 °C from the points at 7 and 12 °C, constant below Tbiv.
+- **Check on the published data, done while designing:** the declared points of the reference
+  unit (Pdesignh 2.40 kW; −10 °C: 2.30 kW; A −7 °C: 2.13 kW, COP 3.60 (Tbiv = −7 °C);
+  B 2 °C: 1.29, 5.14; C 7 °C: 0.94, 6.26; D 12 °C: 1.08, 7.85; PTO 7 W) give SCOPon 5.13 and
+  SCOP 5.12, against the declared 5.10 (and "SCOPnet" 5.13-5.14), and 656 kWh a year against 659.
+  The residual 0.4 % is not explained (rounding of the declared values, or a crankcase-heater
+  power not listed). The test accepts ±0.03.
+- **The model's SCOP:** the same method applied to the model, its points computed at 20 °C
+  indoors (15 °C wet bulb is irrelevant to a dry condenser) with full indoor fan, Pdesignh equal
+  to its full-capacity output at −10 °C (so no back-up heater is needed), Tbiv = −7 °C, and the
+  low-power modes of the reference unit (7, 1, 1, 0 W). Frost is not part of the rating points
+  (the test conditions at 2 °C include defrost in a real test; this is a known optimism of the
+  model's rating).
+
+### D56. Expectations stated beforehand
+- **Timing:** a priori.
+- **F1, rating point:** at 7 °C outdoors, 20 °C indoors and s = 1 the model delivers 2.3-2.7 kW
+  with a COP of 3.3-4.2 (estimate 2.45 kW and 3.8), against 2.80 kW and 5.00 published. The
+  gap should be similar to the cooling EER gap (23 %), since the Carnot fraction is shared.
+- **F2, SCOP:** the model's SCOP is 25-40 % below the published 5.10. The gap is smaller than
+  in cooling (49 %), because in heating the lift stays large and the minimum-lift cap of D20,
+  which made the cooling gap at part load, rarely acts.
+- **F3, SCOP method:** the published points give 5.10 ± 0.03 (measured 5.12 while designing).
+- **F4, season:** Munich needs more than twice Madrid's heating electricity; the PI uses 10-30 %
+  less electricity than the on/off thermostat.
+- **F5, defrost:** in Munich the defrost penalty (electricity in defrost plus the heat taken
+  from the room, over the heating electricity) is 3-10 % with the timed strategy; the demand
+  strategy makes at least 30 % fewer defrosts. In Madrid there are far fewer defrosts than in
+  Munich.
+- **F6, comfort:** with the speed allowed up to 1.68 the unit meets the load except in the
+  coldest hours in Munich: below 20 K·h under the occupied band over the season.
+
 ## Structure
 
 ### D19. Refactor of the simulation interface
