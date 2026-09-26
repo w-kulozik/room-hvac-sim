@@ -150,6 +150,8 @@ class SigmaDeltaLowLoad:
         Sampling period, s.
     T_ref : float, optional
         Modulation time scale, s; the switching threshold is s_min T_ref / 2.
+    s_max : float, optional
+        Highest compressor command, - (1 in cooling; above 1 in heating, D50).
 
     Attributes
     ----------
@@ -162,8 +164,8 @@ class SigmaDeltaLowLoad:
     """
 
     def __init__(self, s_min: float, guard: CompressorGuard, Ts: float = 60.0,
-                 T_ref: float = 600.0) -> None:
-        self.s_min, self.guard, self.Ts = s_min, guard, Ts
+                 T_ref: float = 600.0, s_max: float = 1.0) -> None:
+        self.s_min, self.guard, self.Ts, self.s_max = s_min, guard, Ts, s_max
         self.threshold = 0.5 * s_min * T_ref
         self.acc = 0.0              # requested minus delivered demand, integrated, s
         self.s_prev = 0.0
@@ -197,7 +199,7 @@ class SigmaDeltaLowLoad:
             self.acc = 0.0
             if g.on or g.can_start(t):
                 g.set(t, True)
-            s = min(v, 1.0) if g.on else 0.0
+            s = min(v, self.s_max) if g.on else 0.0
             u_applied = s
         elif v <= 0.0:
             # no demand: stop as soon as the guard allows

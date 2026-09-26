@@ -26,7 +26,7 @@ from typing import Protocol, cast
 import numpy as np
 
 from ._typing import FloatArray
-from .ac_unit import OFF_STATE, ACUnit, CoilState, net_cooling
+from .ac_unit import OFF_STATE, CoilState, Unit, coil_thermistor, net_cooling
 from .inputs import PIECEWISE_CONSTANT, Disturbances, Scenario
 from .integrators import STEPPERS, euler_stability_limit, rk4_stability_limit
 from .params import RoomParams
@@ -91,7 +91,7 @@ def _ratio(a: float, b: float, what: str) -> int:
 
 
 def coil_sensor(st: CoilState, T_a: float) -> float:
-    """Return the evaporator thermistor reading.
+    """Return the evaporator thermistor reading of the cooling unit (``coil_thermistor``).
 
     Parameters
     ----------
@@ -103,21 +103,19 @@ def coil_sensor(st: CoilState, T_a: float) -> float:
     Returns
     -------
     float
-        Coil surface temperature while the unit runs (coil load or indoor fan) and T_s is not
-        NaN, otherwise the room air temperature, degC.
+        Coil surface temperature while the unit runs, otherwise the room air temperature, degC.
     """
-    running = st.Q_coil > 0.0 or st.P_fan_in > 0.0
-    return st.T_s if running and not np.isnan(st.T_s) else T_a
+    return coil_thermistor(st, T_a)
 
 
-def unit_input(unit: ACUnit, cmd: FloatArray, ramp: float, x: FloatArray,
+def unit_input(unit: Unit, cmd: FloatArray, ramp: float, x: FloatArray,
                d: Disturbances, M_c: float | None = None) -> tuple[FloatArray, CoilState]:
     """Compute the plant input u produced by the unit for command cmd at air state x.
 
     Parameters
     ----------
-    unit : ACUnit
-        Air-conditioning unit.
+    unit : Unit
+        Air-conditioning unit or heat pump.
     cmd : ndarray, shape (3,)
         Command [s -, f -, V_vent m3/s].
     ramp : float
@@ -127,7 +125,8 @@ def unit_input(unit: ACUnit, cmd: FloatArray, ramp: float, x: FloatArray,
     d : Disturbances
         Disturbances sampled at a single time.
     M_c : float, optional
-        Water held on the coil, kg; passed to ``ACUnit.operate``.
+        Water held on the coil (frost on the outdoor coil of a heat pump), kg; passed to
+        ``operate``.
 
     Returns
     -------
@@ -138,7 +137,9 @@ def unit_input(unit: ACUnit, cmd: FloatArray, ramp: float, x: FloatArray,
         Unit operating point.
     """
     T_o = cast(float, d.T_o)    # d is sampled at a single time, so T_o is a scalar
-    st = unit.operate(cmd[IDX_CMD_S], cmd[IDX_CMD_FAN], x[IDX_TA], x[IDX_W], T_o, ramp, M_c)
+    W_o = cast(float, d.W_o)
+    st = unit.operate(cmd[IDX_CMD_S], cmd[IDX_CMD_FAN], x[IDX_TA], x[IDX_W], T_o, ramp, M_c,
+                      W_o)
     u = np.empty(N_INPUTS)
     u[IDX_Q_SENS] = -st.Q_sens + st.P_fan_in      # indoor fan heat stays in the room
     u[IDX_M_LAT] = st.m_lat
@@ -149,7 +150,7 @@ def unit_input(unit: ACUnit, cmd: FloatArray, ramp: float, x: FloatArray,
 class _Actuation:
     """Turns the held controller output into plant inputs; tracks compressor starts."""
 
-    def __init__(self, unit: ACUnit | None, t_start: float, running_at_start: bool):
+    def __init__(self, unit: Unit | None, t_start: float, running_at_start: bool):
         self.unit = unit
         self.out = np.zeros(N_CMD if unit is not None else N_INPUTS)
         self.running = running_at_start
@@ -196,7 +197,7 @@ def simulate(
     method: str = "rk4",
     controller: Controller | None = None,
     dt_ctrl: float = 60.0,
-    unit: ACUnit | None = None,
+    unit: Unit | None = None,
     unit_running_at_start: bool = False,
     M_coil0: float = 0.0,
 ) -> SimResult:
@@ -222,8 +223,10 @@ def simulate(
         Discrete controller; without one the plant input is held at zero.
     dt_ctrl : float, optional
         Controller sampling interval, s; a positive integer multiple of dt.
-    unit : ACUnit, optional
-        Air-conditioning unit; if given, the controller output is a unit command.
+    unit : Unit, optional
+        Air-conditioning unit (``ACUnit``) or heat pump (``HeatPump``); if given, the
+        controller output is a unit command and the measurement is extended by the unit's
+        sensors (``Unit.sensors``).
     unit_running_at_start : bool, optional
         Treat the compressor as already running (no start ramp) at t_start.
     M_coil0 : float, optional
@@ -283,7 +286,8 @@ def simulate(
         if controller is not None and k % n_ctrl == 0:
             y = measure(x[:N_STATES], p)
             if unit is not None:
-                y = np.append(y, coil_sensor(act.inputs(t, x, d_k)[1], x[IDX_TA]))
+                y = np.append(y, unit.sensors(act.inputs(t, x, d_k)[1], x[IDX_TA],
+                                              cast(float, d_k.T_o)))
             act.set_output(t, controller.step(t, y))
         held = {name: getattr(d_k, name) for name in PIECEWISE_CONSTANT}
 
@@ -348,7 +352,7 @@ def periodic_state(
     method: str = "rk4",
     controller_factory: Callable[[], Controller] | None = None,
     dt_ctrl: float = 60.0,
-    unit: ACUnit | None = None,
+    unit: Unit | None = None,
     max_iter: int = 10,
 ) -> FloatArray:
     """Find the initial room state of the periodic steady state by Newton shooting.
@@ -379,8 +383,8 @@ def periodic_state(
         Returns a new controller for each simulated period.
     dt_ctrl : float, optional
         Controller sampling interval, s.
-    unit : ACUnit, optional
-        Air-conditioning unit.
+    unit : Unit, optional
+        Air-conditioning unit or heat pump.
     max_iter : int, optional
         Maximum number of Newton iterations.
 

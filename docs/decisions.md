@@ -1081,6 +1081,37 @@ separate entry.
 - **F6, comfort:** with the speed allowed up to 1.68 the unit meets the load except in the
   coldest hours in Munich: below 20 K·h under the occupied band over the season.
 
+### D57. Changes to the heat-pump design during implementation
+- **Timing:** after observation, while implementing and checking the model, before any heating
+  run of a day or a season. Not blind: the rating values of F1 (2.56 kW and a COP of 3.41 at
+  7 °C) and the model's SCOP of F2 (3.19) were seen while checking the implementation, so F1
+  and F2 can no longer be treated as predictions. F3-F6 remain blind.
+- **Condensing temperature in the compressor capacity (D50 changed).** D50 neglected it. With
+  that, at the maximum speed of 1.68 the cycle had no solution above about 5 °C outdoors, and at
+  2 °C it ran to a condensing temperature of 74 °C with a COP of 1.65. The indoor coil cannot
+  reject 1.68 times the rated flow at a reasonable temperature, and the only thing that stops a
+  real compressor from pumping it is that its mass flow falls as the discharge pressure rises.
+  The capacity now carries the factor [1 − k_o (T_c − T_c,rated)] with the cooling slope
+  k_o = 0.016 1/K and the condensing temperature of the cooling rating (45.4 °C); for each T_e
+  the cycle remains a quadratic in Q_h. At 2 °C and s = 1.68: 3.9 kW with a COP of 2.1 and
+  T_c ≈ 56 °C.
+- **Root bracket:** T_e is searched between T_o − 40 K and T_o (it was T_o − 80 K): far below
+  T_o the cycle has no solution and the search failed at the bracket end.
+- **Melting with the compressor off:** D51 used the forced-convection conductance of the
+  outdoor coil. With the compressor off the outdoor fan is off too; natural convection,
+  UA = 60 W/K (10 % of forced), is used instead.
+- **Width of the melting ramp:** melting goes to zero over the last 0.1 kg of frost instead of
+  0.01 kg. With 0.01 kg the melting rate over that mass (0.3 1/s) is far beyond the stability
+  limit of RK4 at a 60 s step, and the frost went negative (−0.03 kg) in a test run. With 0.1 kg
+  the rate is 0.03 1/s (1.8 per step, below the limit of 2.8). The last 0.1 kg then melts with a
+  time constant of about 30 s, and the thermistor reaches its end-of-defrost reading slightly
+  later.
+- **Observed while testing, not a change:** at the part loads of this room the outdoor coil
+  stays above the frost point for most of the time; frost forms mainly at high speed in humid
+  air near 0 °C. In two days at −7 °C and 80 % RH the timed strategy made 64 defrosts of a coil
+  with no frost (each ended after one sample); the demand strategy made 14, all forced by its
+  3-hour limit.
+
 ## Structure
 
 ### D19. Refactor of the simulation interface

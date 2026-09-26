@@ -8,7 +8,8 @@ All functions accept scalars or numpy arrays. Units:
     h          specific enthalpy, kJ / kg dry air
 
 Saturation pressure uses the Magnus form with the coefficients of Alduchov & Eskridge (1996),
-recommended by them for liquid water between -40 and 50 degC.
+recommended by them for liquid water between -40 and 50 degC; over ice (``p_wsi``), their
+coefficients for ice, for -80 to 0 degC.
 """
 
 from __future__ import annotations
@@ -24,6 +25,9 @@ EPS = 0.622        # ratio of molar masses M_w / M_da (rounded, as is usual in H
 _A = 610.94   # Pa
 _B = 17.625   # -
 _C = 243.04   # degC
+_A_ICE = 611.21   # Pa
+_B_ICE = 22.587   # -
+_C_ICE = 273.86   # degC
 
 
 def p_ws(T: FloatOrArray) -> FloatArray:
@@ -41,6 +45,24 @@ def p_ws(T: FloatOrArray) -> FloatArray:
     """
     T = np.asarray(T, dtype=float)
     out: FloatArray = _A * np.exp(_B * T / (T + _C))
+    return out
+
+
+def p_wsi(T: FloatOrArray) -> FloatArray:
+    """Compute the saturation vapour pressure over ice (Magnus form).
+
+    Parameters
+    ----------
+    T : float or ndarray
+        Temperature, degC (intended for T <= 0).
+
+    Returns
+    -------
+    ndarray
+        Saturation vapour pressure over ice, Pa (a numpy scalar for scalar input).
+    """
+    T = np.asarray(T, dtype=float)
+    out: FloatArray = _A_ICE * np.exp(_B_ICE * T / (T + _C_ICE))
     return out
 
 

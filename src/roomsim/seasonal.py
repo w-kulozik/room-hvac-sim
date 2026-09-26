@@ -1,4 +1,7 @@
-"""Seasonal energy efficiency ratio (SEER) by the bin method of Regulation (EU) No 206/2012.
+"""Seasonal efficiency (SEER, SCOP) by the bin method of Regulation (EU) No 206/2012.
+
+The heating part (SCOP, average season, D55) is at the end of the module; it follows section
+3.2 of the same communication and reuses the result type and the 10 % tolerance.
 
 Decision D46. The bin hours, the operating hours of the low-power modes and the reference design
 temperature are those of the Regulation, Annex II, Tables 1, 3 and 4. The calculation follows
@@ -26,6 +29,7 @@ from scipy.optimize import brentq
 
 from ._typing import FloatArray
 from .ac_unit import CP_A, CP_V, H_FG0, ACUnit, _h, _W_sat, net_cooling
+from .heat_pump import HeatPump
 
 # Regulation (EU) No 206/2012, Annex II, Table 1: reference cooling season
 BIN_T: FloatArray = np.arange(17.0, 41.0, dtype=np.float64)       # bin temperature Tj, degC
@@ -292,4 +296,165 @@ def unit_declared_points(unit: ACUnit) -> tuple[float, list[DeclaredPoint]]:
         else:
             raise ValueError(f"part load {Pc:.0f} W at {T_o} degC exceeds the full capacity")
         points.append(DeclaredPoint(T_o, net(s, T_o) / 1e3, eer(s, T_o)))
+    return P_design, points
+
+
+
+# ---- heating (D55) ------------------------------------------------------------------------
+# Regulation (EU) No 206/2012, Annex II, Table 1: average heating season, bins -10 to 15 degC
+HEATING_BIN_T: FloatArray = np.arange(-10.0, 16.0, dtype=np.float64)
+HEATING_BIN_HOURS = np.array([1, 25, 23, 24, 27, 68, 91, 89, 165, 173, 240, 280, 320, 357, 356,
+                              303, 330, 326, 348, 335, 315, 215, 169, 151, 105, 74],
+                             dtype=float)                         # 4 910 h
+T_DESIGN_H = -10.0       # reference design temperature, average season, degC
+HEATING_ANCHOR_T = (-7.0, 2.0, 7.0, 12.0)   # declared points A-D, degC
+# Table 4, heating mode (average season) of a unit that also cools, h per year
+H_HE, H_TO_H, H_SB_H, H_OFF_H, H_CK_H = 1400.0, 179.0, 0.0, 0.0, 179.0
+CDH_DEFAULT = 0.25
+T_IN_HEATING, T_WB_HEATING = 20.0, 15.0     # indoor rating state, degC
+
+
+def heating_part_load(T_j: float | FloatArray, P_design: float) -> FloatArray:
+    """Return the heating part load Ph(Tj) = Pdesignh (Tj - 16) / (Tdesignh - 16), kW.
+
+    Parameters
+    ----------
+    T_j : float or ndarray
+        Bin temperature, degC.
+    P_design : float
+        Design load for heating, kW.
+
+    Returns
+    -------
+    ndarray
+        Part load, kW.
+    """
+    ph: FloatArray = P_design * (np.asarray(T_j, dtype=float) - 16.0) / (T_DESIGN_H - 16.0)
+    return ph
+
+
+def cop_bin_anchor(point: DeclaredPoint, P_design: float, Cdh: float = CDH_DEFAULT) -> float:
+    """Return COPbin at a declared heating point (variable-capacity unit).
+
+    Parameters
+    ----------
+    point : DeclaredPoint
+        Declared capacity Pdh (field ``Pdc``, kW) and COPd (field ``EERd``) at the anchor
+        temperature.
+    P_design : float
+        Design load for heating, kW.
+    Cdh : float, optional
+        Degradation coefficient for heating, -.
+
+    Returns
+    -------
+    float
+        COPd if Pdh matches the part load within the tolerance; COPd degraded by cycling if Pdh
+        is larger; COPd if Pdh is smaller (a back-up heater covers the rest).
+    """
+    Ph = float(heating_part_load(point.T_o, P_design))
+    if abs(point.Pdc - Ph) <= TOLERANCE * Ph:
+        return point.EERd
+    if point.Pdc > Ph:
+        return point.EERd * (1.0 - Cdh * (1.0 - Ph / point.Pdc))
+    return point.EERd
+
+
+def scop(points: Sequence[DeclaredPoint], P_design: float, P_dh_design: float,
+         modes: LowPowerModes = LowPowerModes(),  # noqa: B008  frozen dataclass
+         Cdh: float = CDH_DEFAULT,
+         bin_hours: FloatArray = HEATING_BIN_HOURS) -> SeasonalResult:
+    """Compute SCOP and SCOPon for the average heating season, bivalent point -7 degC.
+
+    Parameters
+    ----------
+    points : sequence of DeclaredPoint
+        Declared points at -7, 2, 7 and 12 degC (capacity kW, COP in ``EERd``).
+    P_design : float
+        Design load for heating at -10 degC, kW.
+    P_dh_design : float
+        Declared capacity at -10 degC, kW (a back-up heater covers P_design - P_dh_design).
+    modes : LowPowerModes, optional
+        Power in the low-power modes, kW.
+    Cdh : float, optional
+        Degradation coefficient for heating, -.
+    bin_hours : ndarray, shape (26,), optional
+        Hours of the bins -10 to 15 degC; the average season by default.
+
+    Returns
+    -------
+    SeasonalResult
+        SCOP (field ``SEER``), SCOPon (``SEER_on``), the annual demand and consumption
+        (``Q_C``, ``Q_CE``) and COPbin at -7, 2, 7 and 12 degC (``EER_bin``).
+
+    Raises
+    ------
+    ValueError
+        If the points are not exactly one at each anchor temperature, or bin_hours has the
+        wrong shape or a negative entry.
+    """
+    by_T = {p.T_o: p for p in points}
+    if sorted(by_T) != sorted(HEATING_ANCHOR_T) or len(points) != len(HEATING_ANCHOR_T):
+        raise ValueError(f"declared points at {[p.T_o for p in points]} degC; exactly one at each "
+                         f"of {list(HEATING_ANCHOR_T)} is required")
+    hours = np.asarray(bin_hours, dtype=float)
+    if hours.shape != HEATING_BIN_T.shape or np.any(hours < 0):
+        raise ValueError(f"bin_hours must have {HEATING_BIN_T.size} non-negative entries for "
+                         "-10 to 15 degC")
+    anchors = np.array([cop_bin_anchor(by_T[T], P_design, Cdh) for T in HEATING_ANCHOR_T])
+    # constant below Tbiv = -7 degC, linear between the anchors, extrapolated above 12 degC
+    # from the points at 7 and 12 degC
+    cop = np.interp(HEATING_BIN_T, HEATING_ANCHOR_T, anchors)
+    above = HEATING_BIN_T > 12.0
+    cop[above] = anchors[2] + (anchors[3] - anchors[2]) * (HEATING_BIN_T[above] - 7.0) / 5.0
+    cap_T = (T_DESIGN_H, *HEATING_ANCHOR_T)
+    cap = (P_dh_design, *(by_T[T].Pdc for T in HEATING_ANCHOR_T))
+    Pdh = np.interp(HEATING_BIN_T, cap_T, cap)
+    Ph = heating_part_load(HEATING_BIN_T, P_design)
+    elbu = np.maximum(Ph - Pdh, 0.0)
+    scop_on = float(np.sum(hours * Ph) / np.sum(hours * ((Ph - elbu) / cop + elbu)))
+    Q_H = P_design * H_HE
+    Q_HE = (Q_H / scop_on + H_TO_H * modes.P_TO + H_CK_H * modes.P_CK + H_OFF_H * modes.P_OFF
+            + H_SB_H * modes.P_SB)
+    return SeasonalResult(SEER=Q_H / Q_HE, SEER_on=scop_on, Q_C=Q_H, Q_CE=Q_HE, EER_bin=anchors)
+
+
+def heat_pump_declared_points(hp: HeatPump) -> tuple[float, list[DeclaredPoint]]:
+    """Compute the design load and the declared heating points of the heat-pump model (D55).
+
+    The unit is evaluated at 20 degC indoors with full indoor fan, a clean outdoor coil and dry
+    outdoor air. The design load is its full-speed (s_max) output at -10 degC. At each anchor
+    temperature the compressor speed is chosen to deliver the part load, or s_min if the part
+    load is below the minimum output.
+
+    Parameters
+    ----------
+    hp : HeatPump
+        Heat-pump model.
+
+    Returns
+    -------
+    P_design : float
+        Design load for heating, kW (also the declared capacity at -10 degC).
+    points : list of DeclaredPoint
+        Declared capacity (kW) and COP (in ``EERd``) at -7, 2, 7 and 12 degC.
+    """
+    W_in = W_at_wet_bulb(T_IN_HEATING, T_WB_HEATING)
+
+    def operating(s: float, T_o: float) -> tuple[float, float]:
+        st = hp.operate(s, 1.0, T_IN_HEATING, W_in, T_o)
+        return -st.Q_sens, st.P_el                      # heat delivered, electrical power; W
+
+    P_design = operating(hp.hp.s_max, T_DESIGN_H)[0] / 1e3
+    s_min, s_max = hp.p.s_min, hp.hp.s_max
+    points = []
+    for T_o in HEATING_ANCHOR_T:
+        Ph = float(heating_part_load(T_o, P_design)) * 1e3
+        if Ph <= operating(s_min, T_o)[0]:
+            s = s_min
+        else:
+            s = brentq(lambda x, T_o=T_o, Ph=Ph: operating(x, T_o)[0] - Ph, s_min, s_max,
+                       xtol=1e-12)
+        Q, P = operating(s, T_o)
+        points.append(DeclaredPoint(T_o, Q / 1e3, Q / P))
     return P_design, points

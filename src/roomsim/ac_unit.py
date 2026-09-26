@@ -122,7 +122,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Literal, NamedTuple, overload
+from typing import Literal, NamedTuple, Protocol, overload
 
 from scipy.optimize import brentq
 
@@ -385,6 +385,53 @@ class CoilOutlet(NamedTuple):
     W_out: float
     T_s: float         # mean surface temperature, degC
     wet_fraction: float
+
+
+def coil_thermistor(st: CoilState, T_a: float) -> float:
+    """Return the evaporator thermistor reading.
+
+    Parameters
+    ----------
+    st : CoilState
+        Unit operating point.
+    T_a : float
+        Indoor air temperature, degC.
+
+    Returns
+    -------
+    float
+        Coil surface temperature while the unit runs (coil load or indoor fan) and T_s is not
+        NaN, otherwise the room air temperature, degC.
+    """
+    running = st.Q_coil > 0.0 or st.P_fan_in > 0.0
+    return st.T_s if running and not math.isnan(st.T_s) else T_a
+
+
+class Unit(Protocol):
+    """Interface of a unit the simulator can drive: ``ACUnit`` (cooling) or ``HeatPump``."""
+
+    @property
+    def p(self) -> ACParams:
+        """Rating data and model parameters (s_min, fans, start-up)."""
+        ...
+
+    def operate(self, s: float, f: float, T_in: float, W_in: float, T_o: float,
+                ramp: float = 1.0, M_c: float | None = None,
+                W_o: float | None = None) -> CoilState:
+        """Return the operating point for commands (s, f); see ``ACUnit.operate``."""
+        ...
+
+    def fan_power(self, f: float) -> float:
+        """Return the indoor fan power at speed f, W."""
+        ...
+
+    def start_ramp(self, t_on: float) -> float:
+        """Return the capacity fraction t_on seconds after a start, -."""
+        ...
+
+    def sensors(self, st: CoilState, T_a: float, T_o: float) -> list[float]:
+        """Return the unit's sensor readings appended to the room measurement."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -745,7 +792,8 @@ class ACUnit:
                          e, dM_coil=m_lat, m_drain=0.0)
 
     def operate(self, s: float, f: float, T_in: float, W_in: float, T_o: float,
-                ramp: float = 1.0, M_c: float | None = None) -> CoilState:
+                ramp: float = 1.0, M_c: float | None = None,
+                W_o: float | None = None) -> CoilState:
         """Return the operating point for commands (s, f).
 
         Parameters
@@ -773,6 +821,9 @@ class ACUnit:
             compressor on the coil is taken as full (all condensate drains, dM_coil = 0,
             steady wet-coil operation); in fan-only operation it is taken as dry (no
             re-evaporation, m_lat = 0).
+        W_o : float or None, optional
+            Outdoor humidity ratio, kg/kg. Not used in cooling (the condenser is dry); it is
+            part of the interface shared with ``roomsim.heat_pump.HeatPump``.
 
         Returns
         -------
@@ -811,6 +862,25 @@ class ACUnit:
         g = 1.0 if M_c is None else self._drain_fraction(M_c)
         return CoilState(Q_sens, m_lat, Q_coil, P_el, P_fan_in, cop, T_s, T_out, W_out, wet,
                          dM_coil=m_lat * (1.0 - g), m_drain=m_lat * g)
+
+    def sensors(self, st: CoilState, T_a: float, T_o: float) -> list[float]:
+        """Return the unit's own sensor readings appended to the room measurement.
+
+        Parameters
+        ----------
+        st : CoilState
+            Operating point.
+        T_a : float
+            Indoor air temperature, degC.
+        T_o : float
+            Outdoor temperature, degC (not used).
+
+        Returns
+        -------
+        list of float
+            [evaporator thermistor, degC] (``coil_thermistor``).
+        """
+        return [coil_thermistor(st, T_a)]
 
     def start_ramp(self, t_on: float) -> float:
         """Return the capacity fraction after a compressor start.

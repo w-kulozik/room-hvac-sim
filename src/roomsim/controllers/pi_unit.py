@@ -46,6 +46,9 @@ class PIUnitController:
         'auto' or 'continuous' (see ``fan_command``).
     ventilation : VentilationSchedule, optional
         Outdoor-air flow schedule.
+    heating : bool, optional
+        Heating mode: the error is T_set - T, so a room colder than the set point raises the
+        demand (D53). Only the sigma-delta handler (C) supports it.
 
     Attributes
     ----------
@@ -55,14 +58,20 @@ class PIUnitController:
     Raises
     ------
     ValueError
-        If the PI and the low-load handler assume different sampling periods.
+        If the PI and the low-load handler assume different sampling periods, or heating is
+        requested with the hysteresis handler (its switching rule is written for cooling).
     """
 
     def __init__(self, pi: DiscretePI, lowload: LowLoadHandler, T_set: SetPoint = 25.0,
                  fan: float = 1.0, fan_mode: str = "auto",
-                 ventilation: VentilationSchedule = NO_VENTILATION) -> None:
+                 ventilation: VentilationSchedule = NO_VENTILATION,
+                 heating: bool = False) -> None:
         common_sampling_period("PIUnitController", pi_Ts=pi.Ts,
                                lowload_Ts=sampling_period(lowload))
+        if heating and isinstance(lowload, HysteresisLowLoad):
+            raise ValueError("heating = True needs the sigma-delta low-load handler; the "
+                             "hysteresis handler switches on cooling thresholds")
+        self.heating = heating
         self.pi, self.lowload = pi, lowload
         self.T_set, self.fan, self.fan_mode, self.ventilation = T_set, fan, fan_mode, ventilation
         self.last_demand = 0.0
@@ -97,7 +106,7 @@ class PIUnitController:
             Command [s (-), f (-), V_vent (m3/s)].
         """
         T_set = self.set_point(t)
-        e = y[IDX_Y_TA] - T_set
+        e = T_set - y[IDX_Y_TA] if self.heating else y[IDX_Y_TA] - T_set
         v = self.pi.demand(e)
         s, u_applied, integrate = self.lowload.step(t, v, y[IDX_Y_TA], T_set)
         self.pi.update(e, v, u_applied, integrate)

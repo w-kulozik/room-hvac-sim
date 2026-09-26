@@ -17,7 +17,10 @@ from .base import (
 
 
 class OnOffThermostat:
-    """Cooling thermostat: start at T_set + band/2, stop at T_set - band/2, fixed speed s_on.
+    """On/off thermostat at a fixed speed s_on.
+
+    Cooling: start at T_set + band/2, stop at T_set - band/2. Heating: start at T_set - band/2,
+    stop at T_set + band/2.
 
     The compressor guard enforces minimum run and stop times.
 
@@ -37,15 +40,18 @@ class OnOffThermostat:
         Outdoor-air flow schedule.
     min_on, min_off : float, optional
         Minimum run and stop times of the compressor, s.
+    heating : bool, optional
+        Heating mode (D53).
     """
 
     def __init__(self, T_set: SetPoint = 25.0, band: float = 1.0, s_on: float = 1.0,
                  fan: float = 1.0, fan_mode: str = "auto",
                  ventilation: VentilationSchedule = NO_VENTILATION,
-                 min_on: float = 180.0, min_off: float = 180.0) -> None:
+                 min_on: float = 180.0, min_off: float = 180.0, heating: bool = False) -> None:
         self.T_set, self.band, self.s_on = T_set, band, s_on
         self.fan, self.fan_mode, self.ventilation = fan, fan_mode, ventilation
         self.guard = CompressorGuard(min_on, min_off)
+        self.heating = heating
 
     def step(self, t: float, y: FloatArray) -> FloatArray:
         """Return the command for one controller sample.
@@ -63,9 +69,13 @@ class OnOffThermostat:
             Command [s (-), f (-), V_vent (m3/s)].
         """
         T, g, T_set = y[IDX_Y_TA], self.guard, set_point_at(self.T_set, t)
-        if not g.on and T_set + 0.5 * self.band <= T and g.can_start(t):
+        if self.heating:
+            start, stop = T_set - 0.5 * self.band >= T, T_set + 0.5 * self.band <= T
+        else:
+            start, stop = T_set + 0.5 * self.band <= T, T_set - 0.5 * self.band >= T
+        if not g.on and start and g.can_start(t):
             g.set(t, True)
-        elif g.on and T_set - 0.5 * self.band >= T and g.can_stop(t):
+        elif g.on and stop and g.can_stop(t):
             g.set(t, False)
         s = self.s_on if g.on else 0.0
         return np.array([s, fan_command(s, self.fan, self.fan_mode), self.ventilation(t)])

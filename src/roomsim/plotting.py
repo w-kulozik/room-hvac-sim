@@ -493,7 +493,10 @@ def plot_ventilation_day(results: Mapping[str, SimResult], co2_limit: float,
 
 def plot_season_monthly(monthly: Mapping[tuple[str, str], tuple[Sequence[float], Sequence[float]]],
                         sites: Sequence[str], controllers: Sequence[str], months: Sequence[str],
-                        path: StrPath) -> None:
+                        path: StrPath,
+                        title: str = ("Cooling season by month: electricity of the unit and net "
+                                      "cooling per kWh (not shown below 1 kWh)"),
+                        ratio_label: str = "EER in use (W/W)") -> None:
     """Plot the monthly electricity and EER in use per site and controller, and save.
 
     Top row: electrical energy of the unit per month (kWh); bottom row: net cooling over
@@ -502,8 +505,9 @@ def plot_season_monthly(monthly: Mapping[tuple[str, str], tuple[Sequence[float],
 
     Parameters
     ----------
-    monthly : mapping of (site, controller) to (electricity, cooling)
-        Monthly electrical energy and net cooling delivered, kWh, one value per month.
+    monthly : mapping of (site, controller) to (electricity, delivered)
+        Monthly electrical energy and net cooling (or heating) delivered, kWh, one value per
+        month.
     sites : sequence of str
         Site names, one column each.
     controllers : sequence of str
@@ -512,6 +516,10 @@ def plot_season_monthly(monthly: Mapping[tuple[str, str], tuple[Sequence[float],
         Month labels.
     path : str or os.PathLike
         Output file.
+    title : str, optional
+        Figure title.
+    ratio_label : str, optional
+        Label of the bottom row (delivered over electricity).
     """
     n_c = len(controllers)
     width = 0.8 / n_c
@@ -533,12 +541,10 @@ def plot_season_monthly(monthly: Mapping[tuple[str, str], tuple[Sequence[float],
         axR.set_xticks(x)
         axR.set_xticklabels(months)
     axes[0, 0].set_ylabel("Electricity (kWh)")
-    axes[1, 0].set_ylabel("EER in use (W/W)")
+    axes[1, 0].set_ylabel(ratio_label)
     handles, labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="upper left", bbox_to_anchor=(0.06, 1.0), ncol=n_c)
-    fig.suptitle("Cooling season by month: electricity of the unit and net cooling per kWh "
-                 "(not shown below 1 kWh)",
-                 x=0.06, y=1.06, ha="left", va="bottom", fontsize=11, fontweight="semibold")
+    fig.suptitle(title, x=0.06, y=1.06, ha="left", va="bottom", fontsize=11, fontweight="semibold")
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
