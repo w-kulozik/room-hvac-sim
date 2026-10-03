@@ -1112,6 +1112,74 @@ separate entry.
   with no frost (each ended after one sample); the demand strategy made 14, all forced by its
   3-hour limit.
 
+## Cross-validation in Modelica and the controller as C firmware
+
+D58-D59 were written down and committed before the Modelica results were compared with the
+Python model and before the C controller was run against the Python one. The Modelica model had
+been compiled and run once, and the C code compiled, to check that they work; nothing was
+compared.
+
+### D58. The room in Modelica
+- **Timing:** a priori.
+- **Purpose:** a second implementation of the room equations in another language, solved by a
+  different method, catches transcription errors that the verification against analytical
+  solutions (which uses the Python equations themselves) cannot.
+- **Model:** `modelica/RoomSim.mo` (package `RoomSim`): the room balances of
+  [model.md](model.md), the derived parameters written from their definitions (air capacity,
+  infiltration, the EMPD buffer conductance from the Lewis analogy) and the sinusoidal summer
+  day, written from the documentation, not translated line by line from the Python code. It
+  uses the Modelica Standard Library only for π.
+- **Solver:** OpenModelica 1.26.3, DASSL (variable-order backward differentiation), relative
+  tolerance 10⁻¹⁰, output every 600 s for three days. Python: RK4 at 60 s, as in the studies.
+- **Cases:**
+  - A, free-floating: the summer day without HVAC or ventilation.
+  - B, scheduled: from 8 to 18 h, ventilation 0.0105 m³/s, 800 W of sensible cooling and
+    10⁻⁴ kg/s of water removed; nothing outside those hours. This exercises the HVAC,
+    ventilation and moisture-removal terms and their switching.
+- **Acceptance:** over the three days, at every output time,
+  |ΔT_a|, |ΔT_m| < 10⁻⁵ K; |ΔW| < 10⁻⁸ kg/kg; |Δφ_b| < 10⁻⁶; |ΔC| < 10⁻⁴ ppm.
+  The RK4 error at 60 s is of order 10⁻⁹ K on these runs (switching at grid points), and
+  DASSL at 10⁻¹⁰ relative tolerance should be within about 10⁻⁷ K; the bounds leave a margin
+  of about 100 over both, while any transcription error in a coefficient (a wrong conductance,
+  a factor in the buffer or CO2 balance) shows up at 10⁻³ K or more.
+- **Reproducibility:** the Modelica results are committed in `modelica/results/` with the
+  OpenModelica version; `scripts/crossvalidate_modelica.py --run-modelica` regenerates them
+  where OpenModelica is installed. The comparison itself (script and test) needs only the
+  committed files, so `reproduce.py` and `pytest` run without OpenModelica.
+
+### D59. The PI with sigma-delta low-load handling as fixed-point C firmware
+- **Timing:** a priori.
+- **Purpose:** the controller as it would run on the unit's microcontroller, verified in the
+  loop against the Python controller (software-in-the-loop, SIL).
+- **Scope:** the temperature PI with back-calculation anti-windup, the sigma-delta low-load
+  handler and the compressor guard (handler C of the studies, cooling). The set point schedule,
+  the fan mode and the ventilation stay in Python; the firmware gets the measured air
+  temperature and the set point every sample and returns the compressor command.
+- **Implementation:** C99, `firmware/pi_sigma_delta.c` and `.h`. No floating point, no dynamic
+  memory, one state structure. Number formats:
+  - temperatures, errors and demands: Q16.16 in 32-bit integers (resolution 1.5·10⁻⁵);
+  - gains Kp and Kp·Ts/Ti and the tracking gain Ts/Tt: Q8.24 (resolution 6·10⁻⁸);
+  - PI integrator: Q32.32 in a 64-bit integer, so rounding does not accumulate;
+  - sigma-delta accumulator: Q16.16 seconds; times: whole seconds.
+  Products are formed in 64 bits and rounded to nearest. The parameters are converted from
+  the Python tuning (`make_pi_controller`), not set by hand.
+- **Build:** any C99 compiler; the build script uses `$CC` if set, otherwise the zig toolchain
+  installed from PyPI (`python -m ziglang cc`). The library is loaded with `ctypes` by
+  `roomsim.controllers.firmware.FirmwareController`, which has the interface of the Python
+  controllers.
+- **Verification and acceptance:**
+  - open loop: the measurement sequence of a Python closed-loop day is fed to both
+    controllers; every compressor on/off decision must be identical, and the speed command
+    must agree within 10⁻⁴ (quantisation of Q16.16 is 1.5·10⁻⁵);
+  - closed loop, three standard summer days after three warm-up days: energy within 0.5 %,
+    compressor starts within 3 %, RMS temperature deviation within 0.01 K of the Python
+    controller. The sigma-delta switching can move by a sample after a quantisation-sized
+    difference, after which the runs differ in detail but not in their statistics;
+  - fixed-point arithmetic: rounding and saturation of the primitives checked against exact
+    rational arithmetic on random inputs.
+- **Expectation:** all open-loop decisions identical, and closed-loop indicators within a
+  tenth of the bounds.
+
 ## Structure
 
 ### D19. Refactor of the simulation interface
