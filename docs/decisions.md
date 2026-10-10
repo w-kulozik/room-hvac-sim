@@ -1180,6 +1180,24 @@ compared.
 - **Expectation:** all open-loop decisions identical, and closed-loop indicators within a
   tenth of the bounds.
 
+### D60. Cross-validation and firmware results against the criteria
+- **Timing:** after the runs. This entry only records outcomes; nothing fixed in D58-D59 was
+  changed. Tables: `figures/modelica_crossvalidation.md`, `figures/firmware_sil.md`.
+- **One fix to the comparison script, not to a model:** OpenModelica writes extra rows at the
+  events of the scenario (sunrise and sunset, start and end of occupancy), with times a few
+  10⁻⁹ s off the output grid; the first comparison stopped because the time columns differed.
+  The reader now keeps the first row at each output time (the states are continuous at these
+  events).
+- **D58, Modelica: met, with margins of 21 (W) to 340 (T_a).** Largest differences over three
+  days: T_a 1.5·10⁻⁸ K (case A) and 2.9·10⁻⁸ K (case B), T_m 8·10⁻⁹ K, W 5·10⁻¹⁰ kg/kg, φ_b
+  2·10⁻⁸, C 1.6·10⁻⁶ ppm. No transcription error was found in the room equations, the derived
+  parameters or the scenario.
+- **D59, firmware: met; the expectation of a tenth of the bounds met, for T rms exactly at the
+  tenth.** Open loop over 2 880 samples: no on/off decision differs; the largest speed
+  difference is 1.5·10⁻⁵ (one unit of Q16.16) and the largest demand difference 1.7·10⁻⁵.
+  Closed loop over three days: energy 7.388 against 7.389 kWh (−0.002 %), 251 starts in both,
+  RMS deviation 0.203 against 0.204 K, mean occupied RH 62.39 against 62.40 %.
+
 ## Structure
 
 ### D19. Refactor of the simulation interface

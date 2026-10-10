@@ -28,7 +28,7 @@ from roomsim.simulate import simulate
 
 try:
     LIB = load_library()
-except Exception as exc:  # noqa: BLE001  any build or load failure skips the module
+except Exception as exc:  # any build or load failure skips the module
     pytest.skip(f"firmware not available: {exc}", allow_module_level=True)
 
 P, UNIT = RoomParams(), ACUnit()

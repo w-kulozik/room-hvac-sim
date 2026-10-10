@@ -12,9 +12,11 @@ OpenModelica; the omc executable is taken from $OPENMODELICAHOME/bin or the PATH
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
@@ -67,8 +69,13 @@ def read_modelica(model: str) -> dict[str, FloatArray]:
     names = [n.strip('"') for n in header.split(",")]
     data = np.loadtxt(path, delimiter=",", skiprows=1)
     columns = {n: data[:, i] for i, n in enumerate(names)}
-    # OpenModelica writes the final time twice (an event at the stop time); keep the first
-    t, first = np.unique(columns["time"], return_index=True)
+    # OpenModelica adds rows at events (sunrise, start and end of occupancy, the stop time),
+    # with times a few 1e-9 s off the grid, before and after the event; the states are
+    # continuous there, so keep the first row at each output time
+    t_round = np.round(columns["time"], 3)
+    on_grid = np.isclose(np.mod(t_round, OUTPUT_STEP), 0.0)
+    t, first = np.unique(t_round[on_grid], return_index=True)
+    first = np.flatnonzero(on_grid)[first]
     out = {"time": t}
     for name in STATES:
         out[name] = columns[f"room.{name}"][first]
@@ -108,7 +115,7 @@ def run_modelica() -> None:
 
 def compare() -> tuple[str, dict[str, dict[str, float]]]:
     """Return the comparison table and the largest differences per case and state."""
-    lines = ["| Case | " + " | ".join(f"max |Δ{n}| ({UNITS[n]})" for n in STATES) + " |",
+    lines = ["| Case | " + " | ".join(f"Largest Δ{n} ({UNITS[n]})" for n in STATES) + " |",
              "|" + "---|" * (len(STATES) + 1)]
     diffs: dict[str, dict[str, float]] = {}
     fmt: Callable[[float], str] = lambda v: f"{v:.1e}"  # noqa: E731  one-line formatter
@@ -128,6 +135,8 @@ def main() -> None:
     parser.add_argument("--run-modelica", action="store_true",
                         help="regenerate the Modelica results with OpenModelica first")
     args = parser.parse_args()
+    if isinstance(sys.stdout, io.TextIOWrapper):  # the table is not cp1252 (Greek Delta)
+        sys.stdout.reconfigure(encoding="utf-8")
     if args.run_modelica:
         run_modelica()
     table, diffs = compare()

@@ -2,7 +2,7 @@
 
 Usage::
 
-    python scripts/reproduce.py            # run all studies (about 5 minutes)
+    python scripts/reproduce.py            # run all studies (about 20 minutes)
     python scripts/reproduce.py --check    # also fail if any regenerated file differs
                                            # from the committed version (needs git)
 
@@ -26,6 +26,9 @@ STUDIES = [
     "compare_mpc.py",
     "compare_ventilation.py",
     "compare_season.py",
+    "compare_heating.py",
+    "crossvalidate_modelica.py",
+    "compare_firmware.py",
 ]
 
 
