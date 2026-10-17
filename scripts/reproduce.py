@@ -2,7 +2,7 @@
 
 Usage::
 
-    python scripts/reproduce.py            # run all studies (about 20 minutes)
+    python scripts/reproduce.py            # run all studies (about 25 minutes)
     python scripts/reproduce.py --check    # also fail if any regenerated file differs
                                            # from the committed version (needs git)
 

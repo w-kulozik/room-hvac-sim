@@ -116,7 +116,7 @@ pip install -e ".[dev]"
 python scripts/reproduce.py --check
 ```
 
-`reproduce.py` runs every study in turn (about twenty minutes, most of it the two seasons,
+`reproduce.py` runs every study in turn (about 25 minutes, most of it the two seasons,
 which run in parallel processes), writes the figures and result
 tables to `figures/`, checks that the tables quoted in `docs/` match them, and with `--check`
 fails if any regenerated file differs from the committed one. The studies are deterministic,
