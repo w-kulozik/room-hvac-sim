@@ -13,6 +13,9 @@ taken from it. Nothing else in the project relies on these sources.
    - Used: the coefficients of the recommended Magnus form over water,
      e_w = 6.1094 hPa · exp(17.625 t/(243.04 + t)), equation (25) of the report, recommended
      for −40 to 50 °C with a maximum relative error below 0.4 %.
+   - Also used, for frost on the outdoor coil (D51): their form over ice,
+     e_i = 6.1121 hPa · exp(22.587 t/(273.86 + t)). The coefficients are as remembered; the
+     report was not re-read for them. They are checked against 259.9 Pa at −10 °C (item 18).
 2. U.S. Department of Energy. *EnergyPlus Version 9.6 Engineering Reference*, section
    "Effective Moisture Penetration Depth (EMPD) Model".
    <https://bigladdersoftware.com/epx/docs/9-6/engineering-reference/effective-moisture-penetration-depth-empd.html>
@@ -111,6 +114,12 @@ taken from it. Nothing else in the project relies on these sources.
     - Read again on 24 October 2026 for the seasonal study: page 19 (Pdesignc 2.50 kW, annual
       consumption 101 kWh) and page 21 (off mode 1 W, standby 1 W, thermostat-off 6 W in
       cooling, degradation coefficient Cdc 0.25), used in the SEER check of D46.
+    - Read again on 25 October 2026 for the heat pump: page 19 (heating capacity 1.30 / 2.80 /
+      4.70 kW, COP 5.00 at 20 °C indoors and 7 °C outdoors) and page 20 (average season:
+      Pdesignh 2.40 kW, 2.30 kW at −10 °C, SCOP 5.10, 659 kWh a year, declared points at −7, 2,
+      7 and 12 °C, Tbiv −7 °C; thermostat-off 7 W in heating), used in D50 and D55. The
+      extracted table interleaves the three sizes; at 12 °C this size's capacity is 0.99 or
+      1.08 kW and 1.08 is used (the SCOP changes by 0.004).
 12. Daikin Europe N.V. *Wandgerät Klimatisierung, Technische Daten, FTXM-R*, EEDDE22 (German).
     Read in a copy hosted by a reseller:
     <https://www.klimaanlagen-heizungen.de/media/pdf/91/75/08/Daikin-Perfera-Wandgeraet-FTXM-Datenblatt.pdf>,
@@ -167,3 +176,9 @@ taken from it. Nothing else in the project relies on these sources.
     solar-engineering textbooks; checked against the low-precision solar coordinates of the
     astronomical almanac (D44, `tests/test_solar.py`) and against the PVGIS data themselves.
     The original papers were not consulted.
+18. Murphy, D. M. and Koop, T. (2005). Review of the vapour pressures of ice and supercooled
+    water for atmospheric applications. *Quarterly Journal of the Royal Meteorological
+    Society* 131, 1539-1565.
+    - Not consulted for this project. The value 259.9 Pa over ice at −10 °C is quoted from
+      memory and used only as a sanity check of the Magnus form over ice in
+      `tests/test_heat_pump.py`, with a tolerance of 0.1 %.

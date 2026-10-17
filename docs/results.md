@@ -420,3 +420,109 @@ humid hours, is in `figures/season_comparison.md`.
   is the room free-floating, not a fault of the controllers.
 - **Limits:** every day is a working day, the window has no shading or angle-dependent
   transmittance, and the MPC is not run (its forecast model is the sinusoidal day).
+
+## Heating with a heat pump
+
+Script: `scripts/compare_heating.py`. Design and expectations: decisions D50-D56 in
+[decisions.md](decisions.md); changes made during implementation: D57; outcomes: D61.
+
+The same unit run as a heat pump. The heating mode reuses the cooling calibration (Carnot
+fraction, minimum lift, compressor slopes, fans) instead of being fitted to heating data, adds
+frost on the outdoor coil and reverse-cycle defrost, and may run the compressor up to 1.68 times
+its rated speed, as real inverter units do in heating. The season runs from 1 October to
+30 April with the typical years of Munich and Madrid; set point 20 °C from 6 to 18 h and 16 °C
+otherwise. Two defrost strategies are compared: timed (after 40 minutes of running with a cold
+coil) and demand (when the coil reads 2 K colder than a clean coil would).
+
+### Seasonal coefficient of performance (SCOP)
+
+Average heating season of Regulation (EU) No 206/2012, by the method of the Commission's
+communication 2012/C 172/01, section 3.2 ([references.md](references.md), items 14 and 15).
+
+| Bins | Bin hours (h) | Reference unit SCOPon | Reference unit SCOP | Model SCOPon | Model SCOP |
+|---|---|---|---|---|---|
+| average season | 4910 | 5.13 | 5.12 | 3.19 | 3.19 |
+| Munich | 6804 | 5.31 | 5.30 | 3.27 | 3.27 |
+| Madrid | 4839 | 5.63 | 5.62 | 3.41 | 3.41 |
+| declared by the manufacturer | | | 5.10 | | |
+
+- **The method reproduces the label to 0.4 %:** 5.12 against the declared 5.10, and 656 against
+  659 kWh a year. The small residual is not explained (rounding of the declared values, or a
+  crankcase-heater power the data book does not list).
+- **The model:** at 7 °C and rated speed it delivers 2.56 kW at a COP of 3.41, against 2.80 kW
+  and 5.00 for the real unit; its SCOP is 3.19. As in cooling, it is a less efficient unit than
+  this product, and its efficiency rises less at part load (COP 3.56 at 7 °C and part load,
+  against 6.26).
+
+### The season in use
+
+| City, case | Electricity (kWh) | Heat delivered (kWh) | COP in use | Model SCOPon, local bins | Defrosts | Defrost penalty (%) | Frost max (kg) | K·h below band occ. |
+|---|---|---|---|---|---|---|---|---|
+| Munich, on/off, timed defrost | 1160.9 | 1677.2 | 1.44 | 3.27 | 379 | 2.1 | 0.69 | 2.3 |
+| Munich, PI (C), timed defrost | 554.3 | 1676.7 | 3.02 | 3.27 | 669 | 5.0 | 1.44 | 1.0 |
+| Munich, PI (C), demand defrost | 544.5 | 1676.6 | 3.08 | 3.27 | 154 | 2.1 | 1.93 | 5.5 |
+| Madrid, on/off, timed defrost | 524.6 | 757.6 | 1.44 | 3.41 | 93 | 0.8 | 0.62 | 0.2 |
+| Madrid, PI (C), timed defrost | 248.6 | 763.7 | 3.07 | 3.41 | 145 | 2.0 | 0.50 | 0.1 |
+| Madrid, PI (C), demand defrost | 246.4 | 763.8 | 3.10 | 3.41 | 33 | 0.5 | 0.91 | 0.0 |
+
+The heat delivered is net of the heat a defrost takes from the room. The defrost penalty is the
+electricity drawn in defrost plus the heat taken from the room, over the season's electricity.
+The full table, with defrost time, starts, the share at maximum speed and the sensitivity to the
+frost blockage parameter, is in `figures/heating_comparison.md`.
+
+![Monthly electricity and COP in use per city and controller in heating](../figures/heating_monthly.png)
+
+- **Demand defrost:** 77 % fewer defrosts than the timed strategy in both cities, and 1.8 %
+  (Munich) and 0.9 % (Madrid) less electricity. It waits longer: up to 1.9 kg of frost against
+  1.4 kg, because a humid frosting coil reads warmer than its dry clean reference, and the room
+  is a little colder (5.5 against 1.0 K·h below the band in Munich).
+- **Timed defrost wastes cycles:** in cold, dry weather it defrosts a coil that carries little
+  frost; most of its 669 defrosts in Munich end within a minute or two.
+- **PI against on/off:** the PI uses half the electricity, far more than the 10-30 % expected
+  (D56, F4). The thermostat runs at maximum speed, where the cycle is 24 % less efficient, and
+  loses about a third of each three-minute cycle to the start-up ramp. This is the cost of a
+  single-speed thermostat on an inverter unit rather than a property of the PI.
+- **The climate:** Munich needs 2.2 times Madrid's electricity. With the local bins both units
+  rate higher than with the average season, the real unit by 0.2 (Munich) and 0.5 (Madrid).
+- **In use against the rating:** the COP in use is 6-10 % below the model's SCOPon with the
+  local bins.
+- **Limits:** the frost and defrost parameters are assumed for a small outdoor coil, not taken
+  from a product (D51); the sensitivity to the frost blockage is small (±0.4 % electricity). The
+  outdoor coil's latent heat is included, its temperature is taken as the outdoor air's, and
+  the schedules are an hour off the weather in October and April (D54).
+
+## Cross-validation and firmware
+
+### The room in Modelica
+
+Script: `scripts/crossvalidate_modelica.py`; design and criteria: D58; outcome: D60. The room
+model was written a second time in Modelica (`modelica/RoomSim.mo`) and solved by OpenModelica
+1.26.3 (DASSL, relative tolerance 10⁻¹⁰). Largest differences from the Python model (RK4 at
+60 s) over three days:
+
+| Case | Largest ΔT_a (K) | Largest ΔT_m (K) | Largest ΔW (kg/kg) | Largest Δphi_b (-) | Largest ΔC (ppm) |
+|---|---|---|---|---|---|
+| A free-floating | 1.5e-08 | 3.6e-09 | 1.9e-10 | 8.2e-09 | 1.6e-06 |
+| B scheduled | 2.9e-08 | 8.3e-09 | 4.8e-10 | 1.9e-08 | 6.2e-07 |
+| Bound (D58) | 1.0e-05 | 1.0e-05 | 1.0e-08 | 1.0e-06 | 1.0e-04 |
+
+Case B adds ventilation and fixed cooling and dehumidification while occupied. The two
+implementations agree to the accuracy of the solvers.
+
+### The controller as fixed-point C firmware
+
+Script: `scripts/compare_firmware.py`; design: D59; outcome: D60. The PI with sigma-delta
+low-load handling and the compressor guard in C99 without floating point
+([firmware/](../firmware/README.md)), compiled with any C99 compiler and run in the loop
+through `ctypes`:
+
+| Closed loop, three days | Python | Firmware | Difference |
+|---|---|---|---|
+| Energy (kWh) | 7.389 | 7.388 | -0.002 % |
+| Starts | 251 | 251 | +0.0 % |
+| T rms occ. (K) | 0.204 | 0.203 | -0.0010 K |
+| RH mean occ. (%) | 62.40 | 62.39 | -0.001 |
+
+Replaying the measurements of two days into both controllers, none of the 2 880 on/off
+decisions differs, and the speed commands differ by at most one unit of the Q16.16 format
+(1.5·10⁻⁵).

@@ -2,13 +2,14 @@
 
 ## Checks
 
-All checks run in `pytest` (282 tests, about three and a half minutes on a laptop). The code and documents
+All checks run in `pytest` (314 tests, about five minutes on a laptop). The code and documents
 were checked again at the end of the project; the defects found and their fixes are in
 [decisions.md](decisions.md) (D20-D22). The unit model was revised after an external review
 (D29-D32); the tests added then are marked "(D29-D32)" below. A final audit corrected further
 defects and added robustness checks (D35-D42); the tests added then are marked "(D35-D42)".
 The seasonal study added measured weather and the seasonal efficiency (D43-D48); its tests are
-marked "(D43-D48)".
+marked "(D43-D48)". The heat pump (D50-D57) and the cross-validation and firmware (D58-D59)
+are marked likewise.
 
 RK4 is the classical fourth-order Runge-Kutta method, PI a proportional-integral controller and
 MPC model-predictive control. Convergence orders are fitted by least squares over a sequence of
@@ -67,6 +68,16 @@ halved time steps.
 | SEER with the same EER at every bin; degradation rule; declared points of the unit model at the part load or at minimum speed (D43-D48) | 10⁻¹³; exact; 10⁻⁹ |
 | Net cooling integrated with the state vs the trapezoid of the logged values (D43-D48) | 10⁻⁵ relative |
 | On/off thermostat with a set-point schedule; with a constant set point identical to before (D43-D48) | follows the schedule; bit-identical |
+| Heat-pump cycle at five operating points: Q_h = Q_e + P_comp, COP from the condensing temperature of the indoor coil, outdoor coil and compressor in balance (D50-D57) | 10⁻⁹ relative |
+| Heat pump: capacity rises with speed and outdoor temperature, COP with outdoor temperature; capacity factor 1 at the cooling rating's condensing temperature; minimum-lift switch (D50-D57) | monotone; exact; continuous to 10⁻⁶ |
+| Frost: none on a dry or above-zero coil, mass-transfer rate below the frost point, lower capacity and coil temperature with frost; saturation over ice at −10 °C (D50-D57) | exact; 10⁻⁹; 0.1 % of 259.9 Pa |
+| Defrost and off states: power, heat taken from the room, melting rates, thermistor readings; frost never negative in closed loop (D50-D57) | exact; ≥ −10⁻⁶ kg |
+| Heating PI in closed loop at −5 °C: mean temperature and energy balance; thermostat in heating cycles around its set point (D50-D57) | within 0.1 K, 10⁻¹¹ relative; within 0.3 K |
+| Defrost supervisor: timed interval of 40 min of cold running plus defrost and drip; demand strategy idle on a clean coil, forced at 3 h, acts on frost and melts it (D50-D57) | exact sample counts; as designed |
+| SCOP of the real unit from its declared points (D50-D57) | 5.12 against 5.10, 656 against 659 kWh |
+| Room model against the independent Modelica implementation, two three-day cases (D58-D59) | ≤ 2.9·10⁻⁸ K, 4.8·10⁻¹⁰ kg/kg, 1.9·10⁻⁸ in φ_b, 1.6·10⁻⁶ ppm |
+| Firmware fixed-point primitives against exact rational arithmetic, 4 000 random cases (D58-D59) | exact |
+| Firmware against the Python controller: open-loop decisions and commands over two days; closed loop over three days (D58-D59) | identical decisions, ≤ 1.5·10⁻⁵; energy −0.002 %, same starts |
 
 COP is the coefficient of performance of the compressor.
 

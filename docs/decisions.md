@@ -1198,6 +1198,39 @@ compared.
   Closed loop over three days: energy 7.388 against 7.389 kWh (−0.002 %), 251 starts in both,
   RMS deviation 0.203 against 0.204 K, mean occupied RH 62.39 against 62.40 %.
 
+### D61. Heating results against the expectations
+- **Timing:** after the runs. This entry only records outcomes; nothing fixed in D50-D57 was
+  changed. Tables: [results.md](results.md#heating-with-a-heat-pump).
+- **F1, F2 (not blind, D57):** at 7 °C and s = 1 the model gives 2.56 kW at a unit COP of 3.41
+  (published 2.80 kW, 5.00): 9 % less capacity and 32 % less COP, a larger efficiency gap than
+  in cooling (23 %). Its SCOP is 3.19 against the declared 5.10 (37 % below), inside the range
+  of F2 but no longer a prediction.
+- **F3, SCOP method: met.** 5.12 from the published points against the declared 5.10.
+- **F4, season: the first part met, the second not.** Munich uses 2.2 times Madrid's
+  electricity with every controller. The PI uses 52-53 % less than the on/off thermostat, not
+  10-30 %. The thermostat runs at maximum speed (s = 1.68, as the cooling thermostat runs at
+  its maximum), where the cycle efficiency is 24 % lower (D50), and with three-minute cycles it
+  loses about a third of each cycle's heat to the start-up ramp (estimated from the 60 s
+  start-up time constant): its COP in use is 1.44 in every month. The comparison says more about a single-speed thermostat on an inverter unit than
+  about the PI.
+- **F5, defrost: met, except the penalty of the on/off thermostat.**
+  - Penalty with timed defrost in Munich: 5.0 % with the PI (in the range 3-10 %), 2.1 % with
+    the on/off thermostat, which runs (and so accumulates cold running time) less often.
+  - Demand defrost: 154 against 669 defrosts in Munich (77 % fewer), 33 against 145 in Madrid;
+    1.8 % and 0.9 % less electricity.
+  - Madrid has far fewer defrosts than Munich (145 against 669 with the timed strategy).
+- **F6, comfort: met.** At most 5.5 K·h below the occupied band over the season.
+- **Not expected:**
+  - The demand strategy lets more frost build up before it acts (up to 1.9 kg against 1.4 kg),
+    because a humid frosting coil reads warmer than its dry clean reference (D52). The room is
+    a little colder as a result (5.5 against 1.0 K·h below the band in Munich).
+  - The frost blockage parameter matters little: halving or doubling M_half changes the
+    electricity by +0.4 % and −0.2 % and the defrosts from 154 to 180 and 149.
+  - The COP in use is 6-8 % (Munich) and 9-10 % (Madrid) below the model's own SCOPon with the
+    local bins. Likely causes, not separated here: the rating points have no frost and no
+    defrost, and the room's load at mild temperatures, with solar and internal gains, is
+    smaller than the bin method's part load, so the unit cycles at s_min more.
+
 ## Structure
 
 ### D19. Refactor of the simulation interface
@@ -1276,6 +1309,12 @@ stated basis:
   is not run on it.
 - The model's SEER uses the low-power modes of the real unit (6, 1, 1 W), since the model has
   no standby electronics.
+- The heat pump's frost and defrost parameters (outdoor-coil conductances, frost blockage,
+  defrost power and melting fraction) are assumed for a small outdoor coil (D51); its rating
+  points have no frost; the condensing-temperature dependence of the compressor uses the
+  cooling slope (D57); the heating season keeps UTC + 1 h in October and April (D54).
+- The firmware covers the cooling PI with sigma-delta handling only; it has not been run on a
+  microcontroller, only compiled for the host and run in the loop.
 - The model is verified (the equations are solved correctly) but not validated against
   measurements of a real room or unit.
 - The MPC's model has no humidity, so it cannot trade sensible against latent load.

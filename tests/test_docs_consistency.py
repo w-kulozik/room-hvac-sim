@@ -109,6 +109,26 @@ CASES = [
                       ("PI (C) + H2 cascade", "PI (C) + H2 cascade"))},
         "same",
     ),
+    (
+        DOCS / "results.md", "Bins", FIG / "scop.md", "Bins",
+        "same", "same",
+    ),
+    (
+        DOCS / "results.md", "City, case", FIG / "heating_comparison.md", "City, case",
+        {f"{city}, {d}": f"{city}, {g}" for city in ("Munich", "Madrid")
+         for d, g in (("on/off, timed defrost", "On/off, timed defrost"),
+                      ("PI (C), timed defrost", "PI (C), timed defrost"),
+                      ("PI (C), demand defrost", "PI (C), demand defrost"))},
+        "same",
+    ),
+    (
+        DOCS / "results.md", "Case", FIG / "modelica_crossvalidation.md", "Case",
+        "same", "same",
+    ),
+    (
+        DOCS / "results.md", "Closed loop, three days", FIG / "firmware_sil.md",
+        "Closed loop, three days", "same", "same",
+    ),
 ]
 
 VENT_COLUMNS = {"Total energy (kWh)": "Total (kWh)", "Air (m³)": "Air (m³)",

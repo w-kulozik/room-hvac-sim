@@ -107,3 +107,31 @@ split in [results.md](results.md#comparison-with-a-real-unit).
 
 The ventilation fan is modelled separately with the affinity law P = P_d (V/V_d)³, 30 W at
 108 m³/h (decision D23 in [decisions.md](decisions.md)).
+
+## Heat pump
+
+The unit in heating (`roomsim.heat_pump`, decisions D50-D51 and D57). It reuses the cooling
+calibration (Carnot fraction, minimum lift, compressor slopes, fans, start-up ramp), so nothing
+is fitted to heating data.
+
+```
+indoor coil (condenser, dry)  Q_h = G (T_c − T_in),   G = ε m c_p
+outdoor coil (evaporator)     Q_e = φ UA_a,o (T_o − T_s) + φ (UA_a,o / c_p)(W_o − W_sat(T_s))⁺ (h_fg + χ h_fus)
+                              T_s = T_e + Q_e / UA_r,o,   φ = 1 / (1 + M_f / M_half)
+compressor                    Q_e = s Q_rated exp[k_e (T_e − T_r,rated)] [1 − k_o (T_c − T_c,rated)]
+cycle                         COP_h = η(s) T_c / max(T_c − T_e, ΔT_lift,min),   Q_h = Q_e + P_comp
+frost                         dM_f/dt = χ ṁ_dep while heating; melts in defrost and, with the
+                              compressor off, in air above 0 °C
+```
+
+χ is the frozen fraction of the deposit (1 below −0.5 °C, 0 above 0.5 °C). For each T_e the
+cycle is a quadratic in Q_h, solved in closed form; T_e follows from one root search. The
+compressor may run up to s = 1.68 in heating. A defrost (command s < 0) draws 700 W, melts
+frost with half of the 2 000 W it delivers to the outdoor coil and takes 1 300 W from the room.
+
+| Symbol | Meaning | Value |
+|---|---|---|
+| UA_a,o, UA_r,o | outdoor coil, air and refrigerant side | 600, 600 W/K |
+| M_half | frost that halves the air-side conductance | 0.5 kg |
+| s_max | highest speed in heating | 1.68 |
+| T_c,rated | condensing temperature of the cooling rating | 45.4 °C |

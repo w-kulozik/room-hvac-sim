@@ -1,7 +1,9 @@
 # roomsim: a dynamic room model for HVAC control
 
-A small simulator of one office room with an inverter split air conditioner. It is verified
-against analytical solutions and used to test and compare air-conditioning controllers.
+A small simulator of one office room with an inverter split air conditioner, in cooling and
+as a heat pump. It is verified against analytical solutions and against an independent
+Modelica implementation, and used to test and compare air-conditioning controllers, one of
+which also runs as fixed-point C firmware in the loop.
 
 - **The room:** an air node, a thermal-mass node, a moisture balance with buffering by the
   interior surfaces, a CO2 balance and proper psychrometrics.
@@ -9,7 +11,10 @@ against analytical solutions and used to test and compare air-conditioning contr
   Munich and Madrid), sun through a window, and occupants coming and going.
 - **The unit model:** the cooling coil (dry, partially wet or wet), capacity that falls with
   airflow and evaporating temperature, the water held on the coil, frost
-  protection, part-load efficiency and start-up losses.
+  protection, part-load efficiency and start-up losses. In heating, the same calibration run
+  backwards, with frost on the outdoor coil and reverse-cycle defrost.
+- **Seasonal efficiency:** SEER and SCOP by the bin method of Regulation (EU) No 206/2012,
+  checked against the published values of a real unit.
 - **The controllers:** discrete, as in a real unit. They sample the sensors every minute and
   hold their commands until the next sample.
 
@@ -17,8 +22,8 @@ against analytical solutions and used to test and compare air-conditioning contr
 
 ## Main findings
 
-Findings 1-4 are from simulation of one synthetic summer day, repeated; finding 5 is from a
-full cooling season with measured weather (see Limits below).
+Findings 1-4 are from simulation of one synthetic summer day, repeated; findings 5 and 6 are
+from full seasons with measured weather (see Limits below).
 
 1. **A proportional-integral (PI) controller uses 30 % less energy than an on/off thermostat
    but loses most of the humidity control.**
@@ -49,17 +54,29 @@ full cooling season with measured weather (see Limits below).
    - In use the model delivers 11-13 % less cooling per kWh than its own rating with the PI,
      and 26-29 % less with the on/off thermostat, which cycles at every load.
    - The humidity cascade costs 6.5 % in Munich and never acts in dry Madrid.
-6. **The numerics are verified.**
+6. **In heating, demand defrost makes 77 % fewer defrosts than timed defrost.**
+   - Heat-pump season October-April for the same two cities; the heating mode reuses the
+     cooling calibration, so its comparison with the real unit's heating data is out of
+     sample (SCOP 3.19 against 5.10; the method reproduces the label to 0.4 %).
+   - Demand defrost saves 1.8 % electricity in Munich but lets more frost build up, because a
+     humid frosting coil reads warmer than its dry clean reference.
+   - The PI uses half the electricity of an on/off thermostat that runs at maximum speed.
+7. **The numerics are verified.**
    - Fourth-order convergence with the unit inside the integrator, with a constant command and
      in closed loop with the sampled PI, while the coil stays in one regime; second order on
      trajectories that cross from a fully wet into a partially wet coil.
    - Energy, water and CO2 balances closed to round-off.
-   - 282 automated tests.
+   - An independent Modelica implementation of the room, solved by OpenModelica, agrees to
+     3·10⁻⁸ K over three days.
+   - The PI with sigma-delta handling in fixed-point C makes the same 2 880 on/off decisions as
+     the Python controller and the same 251 starts in three days.
+   - 314 automated tests.
 
 ## Limits
 
 - One zone with well-mixed air. The controller studies use one sinusoidal summer day; the
-  seasonal study uses typical meteorological years, cooling only, every day a working day.
+  seasonal studies use typical meteorological years, every day a working day.
+- The frost and defrost parameters of the heat pump are assumed, not taken from a product.
 - The model has not been validated against measurements of a real room. Room and unit
   parameters are plausible for a small office and a 2.5 kW split unit, not fitted to a
   specific building or product.
@@ -79,7 +96,7 @@ Read in this order:
 2. [docs/results.md](docs/results.md): every study with its table and figure. The findings
    above come from here.
 3. [docs/verification.md](docs/verification.md): what is checked and how accurately.
-4. [docs/decisions.md](docs/decisions.md): the log of modelling and study decisions (D1-D49).
+4. [docs/decisions.md](docs/decisions.md): the log of modelling and study decisions (D1-D61).
    It records which ones were fixed before running a study, the corrections made after the
    end-of-project check, after an external review and after the final audit, and the known
    limitations.
@@ -99,7 +116,8 @@ pip install -e ".[dev]"
 python scripts/reproduce.py --check
 ```
 
-`reproduce.py` runs every study in turn (about ten minutes), writes the figures and result
+`reproduce.py` runs every study in turn (about twenty minutes, most of it the two seasons,
+which run in parallel processes), writes the figures and result
 tables to `figures/`, checks that the tables quoted in `docs/` match them, and with `--check`
 fails if any regenerated file differs from the committed one. The studies are deterministic,
 so on a clean checkout every file is reproduced byte for byte. Each study can also be run on
@@ -108,7 +126,7 @@ its own, for example `python scripts/compare_mpc.py`.
 ## Development
 
 ```bash
-pytest                  # about 3.5 minutes
+pytest                  # about 5 minutes
 ruff check .            # lint (pyflakes, pycodestyle, bugbear, docstrings, numpy rules)
 mypy                    # strict type check of src/ and scripts/
 ```
@@ -122,6 +140,10 @@ mypy                    # strict type check of src/ and scripts/
   linter instead.
 - `tests/test_docs_consistency.py` compares every number in the result tables of `docs/` with
   the tables the scripts generate.
+- The `dev` extras include the zig C toolchain from PyPI, which builds the firmware; any other
+  C99 compiler works through `$CC`. OpenModelica is needed only to regenerate the Modelica
+  results (`scripts/crossvalidate_modelica.py --run-modelica`); the committed results are
+  compared without it.
 
 ## Layout
 
@@ -136,6 +158,7 @@ src/roomsim/
   plant.py         rhs(t, x, u, d, p), flux breakdown, Jacobian, sensors
   ac_unit.py       inverter split unit: partially wet coil, capacity, cycle, frost protection,
                    fans, start-up, coil water
+  heat_pump.py     the unit in heating: condenser, outdoor coil with frost, defrost
   integrators.py   Euler, RK4 (classical fourth-order Runge-Kutta), Euler stability limit
   simulate.py      fixed-step loop, discrete controller with zero-order hold, periodic shooting
   results.py       SimResult: states, psychrometrics, balance residuals
@@ -146,14 +169,17 @@ src/roomsim/
   estimation.py    Kalman filter with a disturbance state (offset-free)
   tariff.py        time-of-use electricity price
   ventilation.py   ventilation fan power (affinity law)
-  seasonal.py      SEER by the bin method of Regulation (EU) No 206/2012
+  seasonal.py      SEER and SCOP by the bin method of Regulation (EU) No 206/2012
   reference_unit.py published data of the real unit used for comparison
   controllers/     on/off thermostat, discrete PI with anti-windup, low-load handlers,
                    humidity-aware fan control (direct and cascade), economic MPC,
-                   ventilation strategies (scheduled, CO2 PI, staged, night flush)
+                   ventilation strategies (scheduled, CO2 PI, staged, night flush),
+                   heating PI and defrost supervisor, the C firmware wrapper
 scripts/           one script per study, reproduce.py to run them all, fetch_weather.py
 data/weather/      typical meteorological years (PVGIS, CC BY 4.0) with source notes
-tests/             282 tests; tolerance rules in tests/README.md and tests/criteria.py
+firmware/          the PI with sigma-delta handling in fixed-point C99
+modelica/          the room model in Modelica, and its committed OpenModelica results
+tests/             314 tests; tolerance rules in tests/README.md and tests/criteria.py
 docs/              model, results, verification, decisions, FAQ, specification, references
 figures/           figures and result tables written by the scripts
 ```
