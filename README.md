@@ -193,3 +193,4 @@ figures/           figures and result tables written by the scripts
 
 MIT, see [LICENSE](LICENSE).
 
+Note: This project was originally developed in a private repository and later migrated to this public account. As a result, commit dates may predate the repository’s push history, and author information has been updated to reflect the publishing account.
