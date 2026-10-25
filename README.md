@@ -1,4 +1,4 @@
-# roomsim: a dynamic room model for HVAC control
+# room-hvac-sim: a dynamic room model for HVAC control
 
 A small simulator of one office room with an inverter split air conditioner, in cooling and
 as a heat pump. It is verified against analytical solutions and against an independent
@@ -192,3 +192,4 @@ figures/           figures and result tables written by the scripts
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
