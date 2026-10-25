@@ -1,5 +1,6 @@
 # room-hvac-sim: a dynamic room model for HVAC control
 [![tests](https://github.com/w-kulozik/room-hvac-sim/actions/workflows/tests.yml/badge.svg)](https://github.com/w-kulozik/room-hvac-sim/actions/workflows/tests.yml)
+
 A small simulator of one office room with an inverter split air conditioner, in cooling and
 as a heat pump. It is verified against analytical solutions and against an independent
 Modelica implementation, and used to test and compare air-conditioning controllers, one of
